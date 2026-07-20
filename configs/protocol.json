@@ -1,9 +1,9 @@
 {
-  "protocol_version": "0.4.0-draft",
-  "status": "draft",
-  "ready_for_author_signoff": false,
-  "frozen_at": null,
-  "approved_by": [],
+  "protocol_version": "0.4.0",
+  "status": "frozen",
+  "ready_for_author_signoff": true,
+  "frozen_at": "2026-07-20T19:56:18+02:00",
+  "approved_by": ["Gabriele Lozupone"],
   "study": {
     "title": "Do Frozen Neuroimaging Foundation Representations Add Diagnostic and Prognostic Value in Alzheimer Disease? A Longitudinal ADNI Audit",
     "design": "retrospective_repeated_nested_cross_validation_incremental_value_audit",

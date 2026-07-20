@@ -28,8 +28,9 @@ The paper-facing API now includes canonical feature groups, immutable embedding
 integrity checks, participant-level repeated nested CV, inner-fold preprocessing
 and selection, complete outer-development refitting, participant-equal weights,
 censoring-aware survival evaluation, calibration, and correlated-repeat paired
-reporting and a reconciled exclusion-reason cohort flow. The remaining pre-freeze
-work is author sign-off and a clean-worktree end-to-end preflight.
+reporting and a reconciled exclusion-reason cohort flow. Protocol version 0.4.0
+is frozen with named author approval; the remaining gate is the clean-worktree
+end-to-end preflight over regenerated locked inputs.
 
 ## Local linked inputs
 

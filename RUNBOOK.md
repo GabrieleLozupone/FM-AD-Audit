@@ -334,15 +334,16 @@ Do not launch these commands without development flags until the protocol is
 frozen. During development, restrict smoke runs to one repeat and one outer fold
 and pass `--allow-draft-protocol`.
 
-No locked analysis command is currently authorized.
+The locked analysis is authorized by Gabriele Lozupone, but execution remains
+blocked until regenerated frozen inputs and the cohort audit pass preflight.
 
-## 7. Do not launch confirmatory paper runs yet
+## 7. Complete preflight before confirmatory paper runs
 
-The repository is not yet at protocol-freeze status. Confirmatory runs require
-all of the following first:
+Protocol version 0.4.0 was frozen and approved on 2026-07-20. Confirmatory runs
+still require all of the following:
 
 1. Verify the end-to-end command matrix from a clean committed worktree.
-2. Freeze `configs/protocol.json` after named author sign-off and archive its hash.
+2. Commit the frozen `configs/protocol.json` and archive its hash.
 3. Regenerate the design-only cohort/precision audit and all immutable inputs
    from the frozen protocol and clean commit.
 

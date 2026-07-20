@@ -70,9 +70,11 @@ def test_frozen_protocol_requires_encoder_revision():
         validate_protocol(payload)
 
 
-def test_current_protocol_is_valid_draft():
+def test_current_protocol_is_valid_frozen_release():
     path = Path(__file__).resolve().parents[1] / "configs" / "protocol.json"
-    protocol = load_protocol(path)
-    assert protocol.status == "draft"
+    protocol = load_protocol(path, require_frozen=True)
+    assert protocol.status == "frozen"
+    assert protocol.payload["protocol_version"] == "0.4.0"
+    assert protocol.payload["approved_by"] == ["Gabriele Lozupone"]
     assert protocol.replication("outer_repeat_01").analysis_role == "locked_repeated_nested_cv"
     assert protocol.payload["development_history"]["excluded_from_final_results"] is True

@@ -1,10 +1,10 @@
 # Scientific analysis protocol
 
-Version: 0.4.0-draft  
+Version: 0.4.0  
 Date: 2026-07-20  
 Machine-readable source: [`configs/protocol.json`](../configs/protocol.json)  
-Status: complete scientific draft; **not frozen and not authorized for the
-locked analysis run**.
+Status: **frozen and approved by Gabriele Lozupone** on 2026-07-20. Locked
+analysis remains conditional on a successful clean-worktree preflight.
 
 ## 1. Protocol decision in one paragraph
 
