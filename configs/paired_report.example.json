@@ -1,0 +1,18 @@
+{
+  "comparisons": [
+    {
+      "id": "outer_repeat_01_fold_01_same_visit_adas13_mae",
+      "family": "global_core_endpoints",
+      "replication": "outer_repeat_01",
+      "outer_fold": 1,
+      "metric": "subject_equal_mae",
+      "split": "test",
+      "combined_predictions": "results/paper_neurojepa_feature_audit/outer_repeat_01_seed_1658731809/outer_fold_01/experiments/same_visit_adas13_at_session_neurojepa_conventional/predictions.csv",
+      "conventional_predictions": "results/paper_neurojepa_feature_audit/outer_repeat_01_seed_1658731809/outer_fold_01/experiments/same_visit_adas13_at_session_conventional_full/predictions.csv",
+      "pair_keys": ["participant_id", "session_id", "image_id"],
+      "target_column": "target_value",
+      "combined_prediction_column": "prediction",
+      "conventional_prediction_column": "prediction"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+manifest: data/linked/manifest.csv
+embedding_index: data/linked/embedding_index.csv
+embedding_directory: data/linked/embeddings
+progression_pairs: data/linked/progression_pairs.csv
+horizon_matched_pairs: data/linked/horizon_matched_pairs.csv
+neurojepa_model: NYUMedML/Neuro-JEPA
+neurojepa_revision: null

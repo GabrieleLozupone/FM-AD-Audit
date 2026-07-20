@@ -1,0 +1,379 @@
+{
+  "protocol_version": "0.4.0-draft",
+  "status": "draft",
+  "ready_for_author_signoff": false,
+  "frozen_at": null,
+  "approved_by": [],
+  "study": {
+    "title": "Do Frozen Neuroimaging Foundation Representations Add Diagnostic and Prognostic Value in Alzheimer Disease? A Longitudinal ADNI Audit",
+    "design": "retrospective_repeated_nested_cross_validation_incremental_value_audit",
+    "data_source": "Alzheimer's Disease Neuroimaging Initiative (ADNI)",
+    "unit_of_partition": "participant",
+    "maximum_claim": "internal ADNI evidence about the incremental predictive value of one frozen Neuro-JEPA representation over prespecified conventional variables",
+    "external_testing": false,
+    "clinical_utility_claim": false
+  },
+  "development_history": {
+    "retired_split_seeds": [20260623, 20260718],
+    "status": "not_used_in_the_locked_repeated_nested_cross_validation",
+    "historical_results_use": "implementation debugging and protocol motivation only",
+    "excluded_from_final_results": true
+  },
+  "replications": [
+    {
+      "name": "outer_repeat_01",
+      "split_seed": 1658731809,
+      "analysis_role": "locked_repeated_nested_cv"
+    },
+    {
+      "name": "outer_repeat_02",
+      "split_seed": 1872921030,
+      "analysis_role": "locked_repeated_nested_cv"
+    },
+    {
+      "name": "outer_repeat_03",
+      "split_seed": 621129424,
+      "analysis_role": "locked_repeated_nested_cv"
+    }
+  ],
+  "split_ratios": {
+    "train": 0.60,
+    "validation": 0.15,
+    "test": 0.25
+  },
+  "partitioning": {
+    "strategy": "three_repeats_of_participant_level_nested_cross_validation",
+    "outer_folds": 4,
+    "inner_folds": 5,
+    "outer_test_fraction_per_fold": 0.25,
+    "inner_validation_fraction_of_full_cohort_per_fold": 0.15,
+    "seed_derivation": {
+      "algorithm": "int(first_8_hex(SHA256(label))) modulo (2^31-1)",
+      "base_label": "neurojepa-adni-audit|protocol-0.4.0|2026-07-20",
+      "repeat_labels": ["outer-repeat-1", "outer-repeat-2", "outer-repeat-3"]
+    },
+    "stratification": "baseline diagnosis and any diagnosis change for common outer folds; task outcome or event balance may be used only inside each outer-development partition",
+    "same_assignment_for_all_tasks": true,
+    "participant_rule": "Within every outer fold, all rows from a participant occur only in outer-development or outer-test. Each participant is outer-test exactly once per repeat.",
+    "test_access": "All folds, grids, endpoints and reporting code are locked before generating any outer-test prediction.",
+    "model_selection_data": "five-fold participant-level inner cross-validation inside each outer-development partition",
+    "final_refit": "After inner-CV hyperparameter selection, refit the complete pipeline on the full 75% outer-development partition and evaluate its 25% outer-test fold once.",
+    "split_variability": "Report every outer-fold effect, the pooled out-of-fold effect per repeat, and mean, standard deviation and range across the three repeats. Repeats are correlated resamples, not independent cohorts."
+  },
+  "cohort": {
+    "base_inclusion": [
+      "ADNI participant present in the versioned longitudinal manifest",
+      "eligible T1-weighted MRI at the anchor visit",
+      "successfully extracted finite 768-dimensional pooled Neuro-JEPA embedding",
+      "task reference standard available under the endpoint-specific rules"
+    ],
+    "base_exclusion": [
+      "unreadable or missing MRI",
+      "failed or non-finite embedding, wrong token or pooled shape",
+      "missing task outcome or invalid temporal ordering",
+      "participant or visit not satisfying the endpoint-specific anchor and follow-up rules"
+    ],
+    "paired_cohort_rule": "For every incremental comparison, all feature groups use exactly the same eligible rows and participants; no group-specific complete-case cohort is allowed.",
+    "outlier_policy": "No scan, participant, target, or prediction is removed because it is difficult, extreme, or harms performance. Only prespecified technical failures and impossible values may be excluded, with counts and reasons retained."
+  },
+  "encoder": {
+    "hf_model_id": "NYUMedML/Neuro-JEPA",
+    "hf_revision": "abdfc94aa3d2654a81a14afeb834dc04653b8976",
+    "checkpoint_filename": "model.safetensors",
+    "checkpoint_sha256": "decdf95a0d0d11e4b98ae07c5b180421c9ea076eeeeb818af0a75d88b0a113b0",
+    "config_sha256": "d04f8962ff72f01c0f520555f94af33f3adc17e29b6556f73ec63593189d13d3",
+    "revision_provenance": "Recovered from the only local Hugging Face snapshot cached on 2026-06-23 before the completed embedding extraction; the historical extraction summary recorded hf_revision=null.",
+    "code_commit": "b8074740cd3e6ad72e5d032aa49617bdae327240",
+    "frozen": true,
+    "representation": "arithmetic_mean_of_576_patch_tokens_into_768_dimensions",
+    "downstream_weight_updates": false,
+    "embedding_reuse": {
+      "decision": "reuse_existing_extracted_embeddings_without_reextraction",
+      "rationale": "Extraction is deterministic in evaluation mode with no augmentation, the encoder is frozen, and participant splitting affects only downstream probe fitting.",
+      "required_integrity_checks": [
+        "hash the embedding index and every referenced pooled embedding file",
+        "require exactly one finite 768-dimensional pooled vector per eligible image",
+        "verify image, participant and session keys are unique and match the manifest",
+        "use the same immutable embedding files in every outer and inner fold"
+      ]
+    },
+    "adni_exposure": "ADNI was not reported as institutional pretraining data, but ADNI AD-vs-control and MCI-to-AD tasks were explicit downstream benchmarks in the Neuro-JEPA paper. This study is therefore a post-publication audit, not a model-naive external test."
+  },
+  "mri_preprocessing": {
+    "source": "processed_t1_path",
+    "operations_in_order": [
+      "load image and ensure channel first",
+      "replace NaN values using the pinned Neuro-JEPA remove_nan transform",
+      "orient to RAS",
+      "resample to 1 mm isotropic spacing with interpolation mode 5",
+      "foreground crop at intensity greater than zero with margin 4",
+      "edge pad or crop to 180x216x180",
+      "resize to 100x120x100",
+      "center crop to 96x108x96",
+      "scale the 0.5th to 99.5th intensity percentiles to [0,1] with clipping",
+      "cast to float32"
+    ],
+    "augmentation": "none",
+    "qc": [
+      "visual orientation and slice montage on a prespecified sample",
+      "input shape and intensity summary",
+      "embedding shape, finiteness, and within-versus-between-participant similarity checks"
+    ]
+  },
+  "feature_groups": [
+    "morphometry_only",
+    "clinical_demographic",
+    "conventional_full",
+    "neurojepa_only",
+    "neurojepa_morphometry",
+    "neurojepa_conventional"
+  ],
+  "feature_dictionary": {
+    "shared_demographic": [
+      "age_at_session",
+      "sex_baseline",
+      "education_years_baseline",
+      "apoe4_status"
+    ],
+    "shared_morphometry": [
+      "hippocampus_icv_ratio",
+      "amygdala_icv_ratio",
+      "lateral_ventricles_icv_ratio",
+      "inferior_lateral_ventricles_icv_ratio",
+      "cerebral_cortex_icv_ratio"
+    ],
+    "icv_use": "vol_total_intracranial is used only to construct ratios and is not itself a predictor",
+    "forbidden_primary_predictors": ["field_strength_at_session", "site_baseline", "bids_current_study"],
+    "same_visit_cognition_extra": ["diagnosis_at_session"],
+    "future_cognition_extra": ["diagnosis_at_session", "current_target_value"],
+    "future_morphometry_extra": [
+      "current_diagnosis_at_session",
+      "current_mmse_at_session",
+      "current_adas11_at_session",
+      "current_adas13_at_session"
+    ],
+    "mci_tasks_extra": [
+      "mmse_at_session",
+      "adas11_at_session",
+      "adas13_at_session"
+    ],
+    "acquisition_audit": "field strength, site and ADNI phase are used only for descriptive robustness auditing, never as model predictors",
+    "same_visit_target_rule": "The concurrent cognitive target itself is always excluded.",
+    "future_predictor_time_rule": "Only measurements available at or before the anchor are predictors."
+  },
+  "missing_data": {
+    "outcomes": "No outcome imputation.",
+    "numeric_predictors": "Median imputation learned on training data, with a missingness indicator for each numeric predictor that is missing in at least one training row.",
+    "categorical_predictors": "Explicit __MISSING__ level and one-hot encoding learned on training data; unseen levels are ignored.",
+    "embedding": "No imputation of missing or failed embeddings.",
+    "reporting": "Report missing counts and percentages by partition and task before imputation."
+  },
+  "training_weights": {
+    "one_anchor_tasks": "weight 1 per participant",
+    "repeated_visit_tasks": "each row receives inverse participant row count within the fitting partition so every participant has equal total loss weight",
+    "test_metrics": "participant-equal aggregation for repeated-visit endpoints"
+  },
+  "anchor_policies": {
+    "ad_vs_cn": "first chronologically eligible MRI per participant; diagnosis must be AD or CN at that visit",
+    "same_visit_cognition": "all target-available eligible MRI sessions",
+    "future_cognition": "all eligible anchor sessions; nearest strictly later target-available visit inside the requested horizon window",
+    "mci_conversion_36m": "first chronologically eligible MCI MRI per participant",
+    "first_mci_survival": "first chronologically eligible MCI MRI per participant",
+    "future_morphometry": "all eligible anchors with the nearest strictly later visit inside each requested horizon window"
+  },
+  "horizons": {
+    "future_cognition_primary_months": 12,
+    "future_cognition_sensitivity_months": [24, 36],
+    "future_morphometry_primary_months": 12,
+    "future_morphometry_sensitivity_months": [24, 36],
+    "survival_evaluation_months": [12, 24, 36],
+    "tolerance_months": 3,
+    "forbidden_locked_analysis_horizons": [6]
+  },
+  "endpoints": {
+    "framework": "prespecified_multi_endpoint_audit_without_a_privileged_single_primary_endpoint",
+    "comparison": "neurojepa_conventional-minus-conventional_full",
+    "core": [
+      {"domain": "diagnostic_state", "task": "ad_vs_cn", "target": "diagnosis", "metric": "auroc", "favorable_direction": "positive"},
+      {"domain": "diagnostic_state", "task": "same_visit_cognition", "target": "adas13_at_session", "metric": "subject_equal_mae", "favorable_direction": "negative"},
+      {"domain": "diagnostic_state", "task": "same_visit_cognition", "target": "adas11_at_session", "metric": "subject_equal_mae", "favorable_direction": "negative"},
+      {"domain": "diagnostic_state", "task": "same_visit_cognition", "target": "mmse_at_session", "metric": "subject_equal_mae", "favorable_direction": "negative"},
+      {"domain": "prognostic", "task": "future_cognition_12m", "target": "adas13", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"domain": "prognostic", "task": "future_cognition_12m", "target": "adas11", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"domain": "prognostic", "task": "future_cognition_12m", "target": "mmse", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"domain": "prognostic", "task": "future_morphometry_12m", "target": "hippocampus_total_icv", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"domain": "prognostic", "task": "future_morphometry_12m", "target": "lateral_ventricles_total_icv", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"domain": "prognostic", "task": "mci_conversion_36m", "target": "conversion", "metric": "auprc", "favorable_direction": "positive"},
+      {"domain": "prognostic", "task": "first_mci_survival", "target": "time_to_ad", "metric": "uno_c_36m", "favorable_direction": "positive"}
+    ],
+    "descriptive": [
+      "all individual feature-group performances",
+      "all supporting discrimination, error, threshold and calibration metrics not designated as the core metric for that task",
+      "24- and 36-month cognitive and morphometric horizons",
+      "all subgroup and robustness analyses"
+    ],
+    "overall_success_rule": "none; report the complete endpoint matrix and make only endpoint-specific and domain-calibrated conclusions",
+    "endpoint_claim_rule": "A Neuro-JEPA incremental-value claim for a core endpoint requires a favorable paired effect, a 95% interval excluding zero, and BH q<0.05 in the single global core family."
+  },
+  "endpoint_definitions": {
+    "future_cognition": "Fit change from the current value and evaluate the reconstructed future value. Carry-forward is the mandatory baseline.",
+    "future_morphometry": "Use regional-volume divided by contemporaneous ICV at both anchor and future visit; fit change and evaluate future value. Only 12, 24, and 36 month pairs are eligible.",
+    "mci_conversion_36m_positive": "First AD diagnosis occurs strictly after the first MCI anchor and no later than 36 months.",
+    "mci_conversion_36m_negative": "No AD diagnosis anywhere in observed follow-up and at least 36 months of observed follow-up after anchor.",
+    "mci_conversion_excluded": "First AD occurs after 36 months, follow-up is shorter than 36 months without AD, or temporal ordering is invalid.",
+    "survival_event": "First AD diagnosis strictly after the first MCI anchor.",
+    "survival_censoring": "Last observed diagnosis-bearing visit when no later AD is observed; duration must be greater than zero.",
+    "survival_competing_risks": "Death is not modeled as a competing event because a complete death endpoint is not available in the canonical manifest; this is a stated limitation."
+  },
+  "ridge_alphas": [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0],
+  "logistic_c_values": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+  "cox_penalizers": [0.01, 0.1, 1.0, 10.0],
+  "cox_l1_ratios": [0.0, 0.5, 1.0],
+  "model_selection": {
+    "ridge": "mean_inner_fold_subject_equal_mae",
+    "logistic_ad_vs_cn": "mean_inner_fold_auroc",
+    "logistic_mci_conversion": "mean_inner_fold_auprc",
+    "cox": "mean_inner_fold_uno_c_truncated_at_36_months",
+    "same_grid_across_feature_groups": true,
+    "tie_break": "Choose stronger regularization: larger Ridge alpha, smaller logistic C, or larger Cox penalizer; for equal Cox penalizer choose smaller l1_ratio.",
+    "test_selection_forbidden": true
+  },
+  "final_models": {
+    "continuous": "Ridge regression",
+    "binary": "L2-regularized logistic regression",
+    "time_to_event": "elastic-net penalized Cox proportional-hazards model",
+    "preprocessing_scope": "fit independently inside every inner training fold, select by mean inner validation performance, then refit on the complete outer-development partition",
+    "standardization": "standardize numeric conventional predictors and every embedding dimension using fitting-partition statistics",
+    "cox_diagnostics": "Scaled Schoenfeld-residual plots and global/feature proportional-hazards tests on the development data; retain the prespecified Cox model but flag violations and emphasize fixed-horizon metrics.",
+    "convergence": "Record every failed grid point and warning; abort a feature group if no prespecified grid point converges. No post-test grid expansion."
+  },
+  "classification_reporting": {
+    "primary_probability_threshold": 0.5,
+    "secondary_threshold_selection": "maximum validation balanced accuracy, carried unchanged to test",
+    "metrics": [
+      "auroc",
+      "auprc",
+      "balanced_accuracy",
+      "sensitivity",
+      "specificity",
+      "matthews_correlation_coefficient",
+      "brier_score",
+      "log_loss",
+      "calibration_intercept",
+      "calibration_slope"
+    ],
+    "plots": ["ROC", "precision_recall", "smooth_calibration_with_rug_or_distribution"],
+    "expected_calibration_error": "descriptive_only_because_bin_dependent"
+  },
+  "regression_reporting": {
+    "metrics": ["participant_equal_mae", "participant_equal_rmse", "r2", "spearman_correlation", "mean_error", "calibration_intercept", "calibration_slope"],
+    "plots": ["observed_vs_predicted_with_identity_and_smooth_calibration", "residual_vs_predicted"]
+  },
+  "survival_reporting": {
+    "metrics": ["uno_c_36m", "cumulative_dynamic_auc_12m", "cumulative_dynamic_auc_24m", "cumulative_dynamic_auc_36m", "brier_12m", "brier_24m", "brier_36m", "integrated_brier_score_12_to_36m", "harrell_c_descriptive"],
+    "censoring_adjustment": "IPCW estimated from the development partition and applied without using test outcomes for model fitting",
+    "plots": ["fixed_horizon_smooth_calibration", "Kaplan_Meier_by_prespecified_test_risk_quartile_for_description_only"]
+  },
+  "bootstrap": {
+    "unit": "participant",
+    "replicates": 10000,
+    "seed": 20260721,
+    "paired": true,
+    "stratification": "none for continuous outcomes; preserve event class for binary outcomes and event status for survival",
+    "scope": "resample participants and recompute each repeat's pooled out-of-fold paired effect, then average the three correlated repeat effects; outer-fold and repeat dispersion separately quantifies split instability"
+  },
+  "confidence_interval": {
+    "method": "percentile",
+    "level": 0.95,
+    "core_endpoint_decision_basis": true
+  },
+  "fdr_families": {
+    "global_core_endpoints": [
+      "ad_vs_cn_auroc",
+      "same_visit_adas13_subject_equal_mae",
+      "same_visit_adas11_subject_equal_mae",
+      "same_visit_mmse_subject_equal_mae",
+      "future_12m_adas13_subject_equal_mae",
+      "future_12m_adas11_subject_equal_mae",
+      "future_12m_mmse_subject_equal_mae",
+      "future_12m_hippocampus_total_icv_subject_equal_mae",
+      "future_12m_lateral_ventricles_total_icv_subject_equal_mae",
+      "mci_conversion_36m_auprc",
+      "first_mci_survival_uno_c_36m"
+    ]
+  },
+  "multiplicity": {
+    "method": "Benjamini-Hochberg",
+    "q": 0.05,
+    "core_endpoints": "one global family containing all 11 diagnostic-state and prognostic core comparisons",
+    "interpretation": "effect sizes, confidence intervals, q-values and split dispersion are considered together; there is no binary overall study success criterion",
+    "descriptive_analyses": "No core incremental-value claims."
+  },
+  "robustness_and_sensitivity": {
+    "locked": [
+      "same-visit cognition without current diagnosis",
+      "future cognition at 24 and 36 months",
+      "future morphometry at 24 and 36 months",
+      "first eligible session instead of all sessions for repeated-visit cognition",
+      "complete-case conventional predictors",
+      "performance by 1.5T versus 3T and by ADNI phase",
+      "first-MCI Cox results emphasizing fixed-horizon metrics when proportional hazards are violated"
+    ],
+    "subgroups": ["sex_baseline", "age_bands_under65_65to74_75plus", "apoe4_status", "field_strength_at_session", "bids_current_study"],
+    "subgroup_reporting_gate": "Regression subgroup: at least 50 test participants. Binary subgroup: at least 50 participants and at least 20 events and 20 non-events. Survival subgroup: at least 50 participants and 20 events. Otherwise report counts only.",
+    "fairness_claim": "No fairness or equity claim; subgroup estimates are exploratory robustness checks and ADNI is not population representative."
+  },
+  "sample_size": {
+    "approach": "finite-cohort census with precision reporting, not a claim of prospective power",
+    "eligible_counts_before_locked_nested_cv": {
+      "ad_vs_cn": {"participants": 1278, "positive": 399},
+      "mci_conversion_36m": {"participants": 605, "positive": 262},
+      "first_mci_survival": {"participants": 1030, "events": 344},
+      "same_visit_adas13": {"rows": 9531, "participants": 2358},
+      "future_adas13_12m": {"rows": 4441, "participants": 1597},
+      "future_morphometry_pairs_all_historical_horizons": {"rows": 14877, "participants": 1872}
+    },
+    "outer_fold_precision": "Every participant contributes an out-of-fold prediction once per repeat; report achieved fold-specific class, event and follow-up counts and interval widths without retrospective power calculations.",
+    "calibration_warning": "Individual conversion folds will contain substantially fewer than 100 events; fold calibration is descriptive and pooled out-of-fold calibration must retain uncertainty.",
+    "abort_conditions": [
+      "any task split lacks both outcome classes or survival events needed for its prespecified metric",
+      "paired feature groups do not share an identical test cohort",
+      "test data were accessed before freeze or used for model selection",
+      "protocol, checkpoint, source, or output hash mismatch"
+    ]
+  },
+  "reporting": {
+    "standards": ["TRIPOD+AI", "CLAIM 2024", "PROBAST+AI", "FUTURE-AI where applicable"],
+    "terminology": "repeated nested internal cross-validation, not external testing or independent cohort replication",
+    "required_counts": "participants, rows, scans, outcomes/events, censoring, follow-up, missingness, and exclusions by task and partition",
+    "required_artifacts": ["cohort flow", "data dictionary", "partition table", "model-selection history", "predictions", "paired effects", "calibration plots", "environment lock", "hash provenance"],
+    "null_results": "All prespecified endpoints and feature groups are reported regardless of direction or significance.",
+    "decision_curve_analysis": "not performed because no clinical action, risk threshold, or deployment claim is prespecified"
+  },
+  "claim_rules": {
+    "incremental_value": "Claim only for a named core endpoint when effect direction, paired interval and global-family q-value support improvement and the fold/repeat dispersion is disclosed.",
+    "negative_or_null": "Describe as no detectable incremental value at the achieved precision, not proof of equivalence.",
+    "generalization": "Restrict conclusions to internal ADNI testing and the pinned frozen representation.",
+    "replication": "The three outer-CV repeats assess split instability and are not independent replications.",
+    "neurojepa_benchmark_exposure": "Disclose that Neuro-JEPA was previously evaluated on ADNI downstream tasks."
+  },
+  "deviations": {
+    "policy": "After freeze, every deviation is appended without editing the frozen original, timestamped, justified, and classified as outcome-blind or outcome-aware.",
+    "outcome_aware_effect": "Any affected analysis is relabeled exploratory.",
+    "test_failure": "No fold, repeat or seed may be replaced because of unfavorable performance. A verified data-integrity defect requires a versioned deviation and complete rerun of the affected prespecified repeat."
+  },
+  "replication_synthesis": "three_locked_repeated_nested_cv_runs_reported_as_correlated_split_stability_analysis_with_no_seed_selection",
+  "implementation_gates_before_freeze": [
+    "implement an immutable existing-embedding integrity manifest with index and per-file hashes, key uniqueness, shape and finiteness checks",
+    "implement participant-level 4-outer-fold by 5-inner-fold nested cross-validation for all three locked repeat seeds",
+    "implement final refit on each complete outer-development partition",
+    "implement participant-equal fitting weights for repeated-visit tasks",
+    "enforce identical paired cohorts, enrich future-pair tables with the expanded morphometry, and exclude 6-month morphometry pairs",
+    "implement Uno C, IPCW Brier scores, fixed-horizon survival calibration, and Cox diagnostics",
+    "implement smooth regression and classification calibration outputs",
+    "generate a design-only cohort and precision audit without comparative test metrics",
+    "update the runbook and paired reporter for outer folds, repeat synthesis and the global core endpoint family",
+    "pass the complete test suite from a clean committed worktree"
+  ],
+  "note": "Revised after author direction on 2026-07-20: existing deterministic frozen embeddings are reused, no historical seed is reused, no single endpoint is privileged, field strength is excluded as a predictor, AD-relevant morphometry is expanded, and split stability is evaluated by three locked repeats of nested cross-validation."
+}
