@@ -1,4 +1,4 @@
-# Neuro-JEPA longitudinal representation audit
+# FM-AD Audit: Auditing Neuroimaging Foundation Models in Alzheimer Disease
 
 This repository contains the reusable analysis code for:
 
