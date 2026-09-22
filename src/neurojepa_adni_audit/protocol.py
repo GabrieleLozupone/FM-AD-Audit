@@ -40,6 +40,23 @@ class Protocol:
                 return replication
         raise ValueError(f"Unknown replication `{name}`.")
 
+    def accepts_artifact_protocol(self, sha256: str, artifact: str) -> bool:
+        """Return whether an immutable artifact is valid for this protocol release."""
+        if sha256 == self.sha256:
+            return True
+        compatibility = self.payload.get("artifact_compatibility", {})
+        for parent in compatibility.get("accepted_parent_protocols", []):
+            if str(parent.get("sha256")) == str(sha256) and artifact in parent.get("artifacts", []):
+                return True
+        return False
+
+    def require_artifact_protocol(self, sha256: str | None, artifact: str) -> None:
+        if not sha256 or not self.accepts_artifact_protocol(str(sha256), artifact):
+            raise ValueError(
+                f"{artifact} protocol hash `{sha256}` is not compatible with "
+                f"protocol {self.payload['protocol_version']} ({self.sha256})."
+            )
+
 
 def _require_keys(mapping: dict[str, Any], keys: set[str], label: str) -> None:
     missing = sorted(keys - set(mapping))
@@ -137,6 +154,95 @@ def validate_protocol(payload: dict[str, Any], *, require_frozen: bool = False) 
     required_groups = {"conventional_full", "neurojepa_conventional"}
     if not required_groups.issubset(set(payload["feature_groups"])):
         raise ValueError("Primary conventional and Neuro-JEPA feature groups are required.")
+
+    nonlinear = payload.get("nonlinear_decoder_analysis")
+    if nonlinear is not None:
+        _require_keys(
+            nonlinear,
+            {
+                "status",
+                "decoder",
+                "required_feature_groups",
+                "descriptive_feature_groups",
+                "endpoints",
+                "architecture",
+                "optimization",
+                "selection",
+                "reporting",
+            },
+            "nonlinear_decoder_analysis",
+        )
+        endpoints = nonlinear["endpoints"]
+        if not isinstance(endpoints, list) or len(endpoints) != 10:
+            raise ValueError("nonlinear_decoder_analysis must define exactly 10 tabular endpoints.")
+        nonlinear_ids = []
+        for index, endpoint in enumerate(endpoints):
+            _require_keys(
+                endpoint,
+                {
+                    "id",
+                    "base_endpoint_id",
+                    "task",
+                    "target",
+                    "metric",
+                    "favorable_direction",
+                },
+                f"nonlinear_decoder_analysis.endpoints[{index}]",
+            )
+            if endpoint["task"] == "first_mci_survival":
+                raise ValueError("The locked nonlinear MLP analysis must exclude survival.")
+            nonlinear_ids.append(str(endpoint["id"]))
+        if len(nonlinear_ids) != len(set(nonlinear_ids)):
+            raise ValueError("Nonlinear endpoint IDs must be unique.")
+        nonlinear_groups = set(nonlinear["required_feature_groups"])
+        if nonlinear_groups != required_groups:
+            raise ValueError(
+                "The nonlinear paired comparison must use conventional_full and "
+                "neurojepa_conventional."
+            )
+        all_nonlinear_groups = nonlinear_groups | set(nonlinear["descriptive_feature_groups"])
+        if not all_nonlinear_groups.issubset(set(payload["feature_groups"])):
+            raise ValueError("Nonlinear feature groups must be protocol feature groups.")
+        optimization = nonlinear["optimization"]
+        _require_keys(
+            optimization,
+            {
+                "learning_rate",
+                "weight_decay_grid",
+                "batch_size",
+                "epochs",
+                "gradient_clip_norm",
+                "early_stopping",
+            },
+            "nonlinear_decoder_analysis.optimization",
+        )
+        for name in ("learning_rate", "batch_size", "epochs", "gradient_clip_norm"):
+            if float(optimization[name]) <= 0:
+                raise ValueError(f"Nonlinear optimization `{name}` must be positive.")
+        grid = optimization["weight_decay_grid"]
+        if not isinstance(grid, list) or not grid or any(float(value) <= 0 for value in grid):
+            raise ValueError("Nonlinear weight_decay_grid must be non-empty and positive.")
+        family = str(nonlinear["reporting"]["family"])
+        if set(payload.get("fdr_families", {}).get(family, [])) != set(nonlinear_ids):
+            raise ValueError("The nonlinear endpoint list must exactly match its FDR family.")
+
+    compatibility = payload.get("artifact_compatibility")
+    if compatibility is not None:
+        _require_keys(
+            compatibility,
+            {"policy", "accepted_parent_protocols"},
+            "artifact_compatibility",
+        )
+        for index, parent in enumerate(compatibility["accepted_parent_protocols"]):
+            _require_keys(
+                parent,
+                {"version", "sha256", "artifacts"},
+                f"artifact_compatibility.accepted_parent_protocols[{index}]",
+            )
+            if len(str(parent["sha256"])) != 64:
+                raise ValueError("Compatible parent protocols require a SHA-256 digest.")
+            if not parent["artifacts"]:
+                raise ValueError("Compatible parent protocols must name reusable artifacts.")
 
     if payload["status"] == "frozen":
         if not payload.get("frozen_at"):

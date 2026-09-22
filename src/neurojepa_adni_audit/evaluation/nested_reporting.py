@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
+from tqdm.auto import tqdm
 
 from neurojepa_adni_audit.evaluation.paired import benjamini_hochberg
 from neurojepa_adni_audit.evaluation.reporting import (
@@ -142,6 +143,7 @@ def repeated_paired_subject_bootstrap(
     replicates: int,
     seed: int,
     stratify_binary: bool,
+    progress_callback: Callable[[int], None] | None = None,
 ) -> tuple[RepeatedPairedBootstrapResult, dict[str, float]]:
     if replicates < 1000:
         raise ValueError("Use at least 1000 bootstrap replicates for paper reporting.")
@@ -184,6 +186,8 @@ def repeated_paired_subject_bootstrap(
             sampled = rng.choice(stratum, size=len(stratum), replace=True)
             multiplicity += np.bincount(sampled, minlength=len(subjects))
         values[bootstrap_index] = float(np.mean(list(effects(multiplicity).values())))
+        if progress_callback is not None:
+            progress_callback(1)
     finite = values[np.isfinite(values)]
     if len(finite) < max(1000, int(0.95 * replicates)):
         raise ValueError(f"Too few valid repeated bootstrap draws: {len(finite)}/{replicates}.")
@@ -205,15 +209,32 @@ def repeated_paired_subject_bootstrap(
 
 
 def run_nested_paired_report(
-    *, spec_path: Path, protocol: Protocol, output_dir: Path
+    *,
+    spec_path: Path,
+    protocol: Protocol,
+    output_dir: Path,
+    show_progress: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     payload = json.loads(spec_path.read_text(encoding="utf-8"))
     comparisons = payload.get("comparisons")
     if not isinstance(comparisons, list) or not comparisons:
         raise ValueError("Nested report specification requires comparisons.")
+    bootstrap_replicates = int(protocol.payload["bootstrap"]["replicates"])
+    progress = tqdm(
+        total=len(comparisons) * bootstrap_replicates,
+        desc="Nested paired report",
+        unit="draw",
+        dynamic_ncols=True,
+        disable=not show_progress,
+    )
     effect_rows = []
     dispersion_rows = []
     for comparison in comparisons:
+        progress.set_postfix(
+            endpoint=str(comparison["id"]),
+            phase="loading",
+            refresh=show_progress,
+        )
         metric_name = str(comparison["metric"])
         if metric_name not in NESTED_SUPPORTED_METRICS:
             raise ValueError(f"Unsupported nested paired metric `{metric_name}`.")
@@ -238,23 +259,35 @@ def run_nested_paired_report(
             dispersion_rows.append(
                 {
                     "id": comparison["id"],
+                    "base_endpoint_id": comparison.get("base_endpoint_id", comparison["id"]),
+                    "family": comparison.get("family", "global_core_endpoints"),
+                    "decoder": comparison.get("decoder", "linear"),
                     "repeat": repeat,
                     "outer_fold": int(outer_fold),
                     "effect": _metric_difference(fold, metric, weights),
                 }
             )
+        progress.set_postfix(
+            endpoint=str(comparison["id"]),
+            phase="bootstrap",
+            refresh=show_progress,
+        )
         result, repeat_effects = repeated_paired_subject_bootstrap(
             paired,
             metric=metric,
-            replicates=int(protocol.payload["bootstrap"]["replicates"]),
+            replicates=bootstrap_replicates,
             seed=int(protocol.payload["bootstrap"]["seed"]),
             stratify_binary=metric_name in NESTED_HIGHER_IS_BETTER,
+            progress_callback=progress.update,
         )
         values = np.asarray(list(repeat_effects.values()), dtype=float)
         effect_rows.append(
             {
                 "id": comparison["id"],
+                "base_endpoint_id": comparison.get("base_endpoint_id", comparison["id"]),
                 "family": comparison.get("family", "global_core_endpoints"),
+                "decoder": comparison.get("decoder", "linear"),
+                "analysis_class": comparison.get("analysis_class", "core"),
                 "metric": metric_name,
                 "difference_definition": "combined-minus-conventional",
                 "favorable_direction": "negative" if metric_name in LOWER_IS_BETTER else "positive",
@@ -266,6 +299,7 @@ def run_nested_paired_report(
                 "repeat_effect_max": float(values.max()),
             }
         )
+    progress.set_postfix(phase="writing", refresh=show_progress)
     effects = pd.DataFrame(effect_rows)
     effects["fdr_adjusted_p_value"] = np.nan
     for _family, indices in effects.groupby("family", sort=False).groups.items():
@@ -289,4 +323,5 @@ def run_nested_paired_report(
         + "\n",
         encoding="utf-8",
     )
+    progress.close()
     return effects, dispersion

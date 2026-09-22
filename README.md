@@ -1,163 +1,152 @@
-# Neuro-JEPA ADNI Longitudinal Audit
+# Neuro-JEPA longitudinal representation audit
 
-Focused experimental repository for the paper:
+This repository contains the reusable analysis code for:
 
-> Do Frozen Neuroimaging Foundation Representations Add Diagnostic and
-> Prognostic Value in Alzheimer Disease? A Longitudinal ADNI Audit
+> *Do Frozen Neuroimaging Foundation Representations Add Diagnostic and
+> Prognostic Value in Alzheimer Disease? A Longitudinal ADNI Audit*
 
-This repository was extracted from the private NeuroSTAR research workspace. It
-contains only the frozen-feature experimental path needed for the paper:
+It evaluates whether a frozen MRI representation adds predictive information to
+prespecified clinical, demographic, and morphometric variables. The public
+repository contains the audit implementation and frozen study protocol, not the
+ADNI data, participant-level features, fitted outputs, manuscript source, or
+presentation material.
 
-- AD versus CN and 36-month MCI conversion classification;
-- same-visit and future cognitive Ridge probes;
-- horizon-matched future cognition and morphometry;
-- first-MCI Cox survival analysis;
-- prespecified conventional/Neuro-JEPA feature groups;
-- participant-aware paired reporting.
+## What is reproducible
 
-Stage 1 progression alignment, generative modeling and Tasks G--J are outside the
-paper scope.
+The code makes the computational procedure inspectable and reusable. A user can
+prepare a longitudinal dataset, provide either Neuro-JEPA embeddings or fixed
+embeddings from another model, and run the same participant-aware comparisons,
+nested cross-validation, calibration, survival analysis, and paired reporting.
 
-## Current migration state
+The paper's exact numerical results are **not guaranteed to be reproducible from
+a new ADNI download**. ADNI is a continuously maintained resource: available
+images, corrected records, derived variables, and download selections can differ
+between access dates. ADNI data-use restrictions also prevent redistribution of
+the paper's participant-level source data and embeddings. Exact reconstruction
+would additionally require the same historical ADNI export, image-selection
+decisions, preprocessing software, model checkpoint, exclusions, and frozen
+cohort manifests.
 
-The repository currently links to the already generated NeuroSTAR derived tables
-and pooled Neuro-JEPA embeddings. These links are local conveniences and are
-ignored by Git. No ADNI data or participant-level embeddings should be committed.
+This is therefore a method-reproduction repository, not a redistributable data
+snapshot. Users should report their ADNI access date, download/query definition,
+software versions, model revision, preprocessing decisions, exclusions, and
+cohort counts. Results obtained from a newly assembled cohort are a new
+application of the audit and should not be described as an exact replication of
+the published numbers.
 
-The paper-facing API now includes canonical feature groups, immutable embedding
-integrity checks, participant-level repeated nested CV, inner-fold preprocessing
-and selection, complete outer-development refitting, participant-equal weights,
-censoring-aware survival evaluation, calibration, and correlated-repeat paired
-reporting and a reconciled exclusion-reason cohort flow. Protocol version 0.4.0
-is frozen with named author approval; the remaining gate is the clean-worktree
-end-to-end preflight over regenerated locked inputs.
+## Repository contents
 
-## Local linked inputs
+- `src/neurojepa_adni_audit/`: reusable cohort, feature, training, evaluation,
+  calibration, survival, and reporting logic;
+- `scripts/`: command-line entry points for preprocessing QC, embedding
+  extraction, nested analyses, and paired reports;
+- `configs/protocol.json`: the frozen paper protocol and estimands;
+- `configs/*.example.*`: portable configuration examples;
+- `RUNBOOK.md`: a general workflow for a user-prepared dataset.
 
-After running the migration script, the following symlinks are created:
-
-```text
-data/linked/manifest.csv
-data/linked/embedding_index.csv
-data/linked/embeddings
-data/linked/progression_pairs.csv
-data/linked/horizon_matched_pairs.csv
-```
-
-The embedding index contains absolute paths to the existing `.npy` files, so
-embedding extraction is not required for the current local continuation.
-
-Validate the links with:
-
-```bash
-bash scripts/check_linked_data.sh
-```
+Tests, raw or derived participant data, embeddings, results, paper files,
+presentations, caches, and local project notes are intentionally excluded from
+the publication tree.
 
 ## Installation
 
-Create one Conda environment for this audit and the pinned Neuro-JEPA encoder:
+Python 3.11 is recommended.
 
 ```bash
-conda create -n neurojepa-adni-audit -c conda-forge python=3.11 pip git -y
-conda activate neurojepa-adni-audit
+python -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e ".[test]"
+python -m pip install -e .
+```
+
+To extract Neuro-JEPA features, install the upstream encoder at the code revision
+used by this study:
+
+```bash
 python -m pip install \
   "neurojepa @ git+https://github.com/NYUMedML/Neuro-JEPA.git@b8074740cd3e6ad72e5d032aa49617bdae327240"
 ```
 
-The pinned Neuro-JEPA package installs its official Torch, MONAI, Safetensors,
-TorchMetrics, and Hugging Face Hub dependencies. Confirm that the environment is
-usable with:
+The released Neuro-JEPA weights are gated. Obtain access from the model provider
+and authenticate through Hugging Face without saving credentials in this
+repository. The frozen model revision and checkpoint hashes used for the paper
+are recorded in `configs/protocol.json`; model weights are not redistributed.
 
-```bash
-python -c "import neurojepa, torch; print(torch.__version__, torch.cuda.is_available())"
-python -m pytest
-```
+## Required user-prepared inputs
 
-### Neuro-JEPA model access
+The audit does not download or preprocess a cohort automatically. At minimum,
+the user supplies:
 
-The [Neuro-JEPA weights](https://huggingface.co/NYUMedML/Neuro-JEPA) are gated.
-Request access with an institutional Hugging Face account, accept the model
-terms, and authenticate without storing a token in this repository:
+1. A visit-level CSV manifest with stable `participant_id`, `session_id`, and
+   unique `image_id` keys; visit time; diagnosis or outcomes required by the
+   selected task; and predictor columns.
+2. One preprocessed T1-weighted NIfTI path per eligible visit when Neuro-JEPA
+   embeddings are to be extracted.
+3. An embedding-index CSV keyed by the same three identifiers, with
+   `pooled_embedding_path` pointing to one finite one-dimensional NumPy array per
+   image. Neuro-JEPA produces 768-dimensional pooled embeddings. Another model
+   may use a different fixed dimension, supplied to the integrity checker with
+   `--expected-dimension`.
+4. Longitudinal pair tables for analyses that forecast a future visit. Pairs must
+   preserve participant and visit identifiers, temporal order, requested
+   horizon, and observed interval.
 
-```bash
-hf auth login
-hf auth whoami
-```
+Clinical and morphometric columns can be missing at the row level; predictors
+are imputed within training folds. Outcomes and embeddings are never imputed.
+All visits from a participant must remain in the same fold.
 
-After approval, verify that the released backbone can be downloaded and loaded:
+## General MRI preprocessing specification
 
-```bash
-python - <<'PY'
-import torch
-from neurojepa.utils.init_utils import load_backbone_from_hf
+Users are responsible for implementing and validating their upstream imaging
+pipeline. It should, at a minimum:
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = load_backbone_from_hf("NYUMedML/Neuro-JEPA", device=device)
-model.eval()
-print(f"Neuro-JEPA loaded on {device}")
-PY
-```
+1. select one eligible T1-weighted scan per participant and visit using a
+   documented, outcome-blind rule;
+2. convert images to NIfTI while preserving identifiers and acquisition
+   provenance;
+3. apply a consistent correction, brain extraction, and spatial-normalization
+   procedure appropriate to the chosen encoder;
+4. visually inspect orientation, coverage, registration, artifacts, and gross
+   failures before feature extraction;
+5. derive morphometry with one documented segmentation pipeline and normalize
+   the prespecified regional volumes by contemporaneous intracranial volume;
+6. retain an exclusion log and versioned manifest rather than silently dropping
+   failed scans.
 
-Model weights are not redistributed by this repository. Keep the code commit and
-Hugging Face model revision used for final extraction recorded in the frozen
-paper protocol. A compatible NVIDIA driver is required separately for GPU use.
+For Neuro-JEPA, `scripts/extract_neurojepa_embeddings.py` then applies the model
+input transform recorded in the frozen protocol: replace non-finite voxels,
+orient to RAS, resample to 1 mm isotropic spacing, foreground crop, pad/crop and
+resize to the encoder field of view, center crop to `96 x 108 x 96`, percentile
+scale intensities to `[0, 1]`, and cast to `float32`. No augmentation is applied.
+Run `scripts/qc_neurojepa_inputs.py` on a representative sample before a full
+extraction. These operations do not replace upstream scan selection, artifact
+QC, bias correction, brain extraction, registration, or morphometric
+segmentation.
 
-## Existing experimental entry points
+## Audit design
 
-See [RUNBOOK.md](RUNBOOK.md) for the ordered execution workflow, the reason for
-each script, and the boundary between smoke tests and confirmatory paper runs.
+The included paper protocol uses participant-level repeated nested
+cross-validation. Preprocessing of tabular predictors, feature selection, and
+hyperparameter selection are fitted inside training data only. The outer held-out
+predictions are compared on identical paired cohorts. Core tasks include AD vs
+CN classification, same-visit cognition, future cognition and morphometry,
+36-month MCI conversion, and first-MCI survival.
 
-```bash
-python scripts/prepare_paper_replications.py --help
-python scripts/build_embedding_integrity_manifest.py --help
-python scripts/prepare_nested_cv.py --help
-python scripts/run_nested_tabular_probe.py --help
-python scripts/run_nested_survival_probe.py --help
-python scripts/audit_nested_cohorts.py --help
-python scripts/report_nested_paired_results.py --help
-python scripts/run_locked_experiment_matrix.py --help
-python scripts/preflight_locked_run.py --help
-python scripts/train_neurojepa_downstream_probe.py --help
-python scripts/train_neurojepa_cognitive_probe.py --help
-python scripts/train_neurojepa_future_state_probe.py --help
-python scripts/train_neurojepa_survival_probe.py --help
-python scripts/report_paired_results.py --help
-```
+The six canonical feature groups are `morphometry_only`,
+`clinical_demographic`, `conventional_full`, `neurojepa_only`,
+`neurojepa_morphometry`, and `neurojepa_conventional`. When auditing another
+encoder, the `neurojepa_*` labels should be interpreted as the supplied frozen
+representation; record that substitution clearly in the derived protocol and
+reports.
 
-The classification and cognition entry points accept the six canonical paper
-feature groups directly. For example, a smoke run of the primary same-visit
-ADAS13 comparison is configured with:
+See [RUNBOOK.md](RUNBOOK.md) for the ordered, dataset-agnostic workflow.
 
-```bash
-python scripts/train_neurojepa_cognitive_probe.py \
-  --manifest-path data/linked/manifest.csv \
-  --embedding-index-path data/linked/embedding_index.csv \
-  --task same_visit --target adas13 \
-  --feature conventional_full --feature neurojepa_conventional
-```
+## Data governance and licenses
 
-Canonical groups are `morphometry_only`, `clinical_demographic`,
-`conventional_full`, `neurojepa_only`, `neurojepa_morphometry`, and
-`neurojepa_conventional`. The probe records the resolved source columns in each
-`summary.json`; morphometry uses explicit hippocampus/ICV and lateral-ventricle/
-ICV ratios, and task-aware checks reject outcome columns before fitting.
+Never commit ADNI images, clinical exports, participant identifiers,
+participant-level embeddings, access tokens, or generated predictions. Users
+must obtain their own ADNI and model access and comply with the corresponding
+terms.
 
-Outputs belong under `results/` and are ignored by Git. The confirmatory runs
-must use paper-specific copies of the manifest/pair tables; the linked historical
-tables are for migration validation and smoke tests only.
-
-## Reproducibility boundary
-
-ADNI MRI, clinical exports, participant identifiers and participant-level
-embeddings cannot be redistributed. A later milestone will add the public ADNI
-input reconstruction, MRI preprocessing and morphometry pipeline. Until then,
-the experimental code can be validated from the linked derived inputs and from
-the synthetic tests.
-
-## Licenses
-
-This repository's original code is MIT licensed. Neuro-JEPA code is MIT licensed;
-its released model weights use CC BY-NC-ND 4.0. Users must separately satisfy
-ADNI and Neuro-JEPA access and usage terms.
+Original code in this repository is MIT licensed. The Neuro-JEPA software and
+weights remain subject to their own licenses and access conditions.

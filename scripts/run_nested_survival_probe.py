@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -42,8 +44,9 @@ def main() -> None:
     args = parse_args()
     protocol = load_protocol(args.protocol_path, require_frozen=not args.allow_draft_protocol)
     provenance = json.loads((args.input_dir / "provenance.json").read_text())
-    if provenance.get("protocol", {}).get("sha256") != protocol.sha256:
-        raise ValueError("Nested-CV inputs were generated from a different protocol hash.")
+    protocol.require_artifact_protocol(
+        provenance.get("protocol", {}).get("sha256"), "nested_cv_inputs"
+    )
     assignments = pd.read_csv(args.input_dir / "nested_fold_assignments.csv", low_memory=False)
     validate_nested_fold_assignments(assignments, protocol)
     table = load_survival_task_table(
@@ -96,16 +99,31 @@ def main() -> None:
                     penalizers=[float(value) for value in protocol.payload["cox_penalizers"]],
                     l1_ratios=[float(value) for value in protocol.payload["cox_l1_ratios"]],
                     horizons=horizons,
+                    log=lambda message: print(
+                        f"SURVIVAL feature={feature} repeat={repeat} outer={outer_fold} {message}",
+                        flush=True,
+                    ),
+                    show_fit_progress=True,
                 )
                 summary["protocol_sha256"] = protocol.sha256
-                run_dir.mkdir(parents=True)
-                predictions.to_csv(run_dir / "outer_test_predictions.csv", index=False)
-                history.to_csv(run_dir / "inner_model_selection.csv", index=False)
-                calibration.to_csv(run_dir / "outer_test_calibration.csv", index=False)
-                schoenfeld.to_csv(run_dir / "development_scaled_schoenfeld_residuals.csv", index=False)
-                (run_dir / "summary.json").write_text(
-                    json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+                run_dir.parent.mkdir(parents=True, exist_ok=True)
+                temporary = Path(
+                    tempfile.mkdtemp(prefix=f".{run_dir.name}_", dir=run_dir.parent)
                 )
+                try:
+                    predictions.to_csv(temporary / "outer_test_predictions.csv", index=False)
+                    history.to_csv(temporary / "inner_model_selection.csv", index=False)
+                    calibration.to_csv(temporary / "outer_test_calibration.csv", index=False)
+                    schoenfeld.to_csv(
+                        temporary / "development_scaled_schoenfeld_residuals.csv", index=False
+                    )
+                    (temporary / "summary.json").write_text(
+                        json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+                    )
+                    temporary.rename(run_dir)
+                except Exception:
+                    shutil.rmtree(temporary, ignore_errors=True)
+                    raise
                 print(f"DONE output={run_dir}", flush=True)
 
 

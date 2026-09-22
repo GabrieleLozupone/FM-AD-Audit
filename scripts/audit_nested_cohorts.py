@@ -59,8 +59,9 @@ def main() -> None:
         raise FileExistsError(f"Refusing to overwrite cohort audit: {args.output_path}")
     protocol = load_protocol(args.protocol_path, require_frozen=not args.allow_draft_protocol)
     provenance = json.loads((args.input_dir / "provenance.json").read_text())
-    if provenance.get("protocol", {}).get("sha256") != protocol.sha256:
-        raise ValueError("Cohort inputs were generated from a different protocol hash.")
+    protocol.require_artifact_protocol(
+        provenance.get("protocol", {}).get("sha256"), "nested_cv_inputs"
+    )
     assignments = pd.read_csv(args.input_dir / "nested_fold_assignments.csv", low_memory=False)
     validate_nested_fold_assignments(assignments, protocol)
     manifest_path = args.input_dir / "manifest.csv"

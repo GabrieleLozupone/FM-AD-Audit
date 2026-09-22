@@ -43,7 +43,9 @@ def main() -> None:
         provenance = json.loads(provenance_path.read_text())
         check(
             "input_protocol_hash",
-            provenance.get("protocol", {}).get("sha256") == protocol.sha256,
+            protocol.accepts_artifact_protocol(
+                provenance.get("protocol", {}).get("sha256"), "nested_cv_inputs"
+            ),
             str(provenance.get("protocol", {}).get("sha256")),
         )
         check(
@@ -66,7 +68,13 @@ def main() -> None:
     if args.cohort_audit_path.exists():
         audit = json.loads(args.cohort_audit_path.read_text())
         flows = [task.get("cohort_flow", {}) for task in audit.get("tasks", [])]
-        check("audit_protocol_hash", audit.get("protocol_sha256") == protocol.sha256, str(audit.get("protocol_sha256")))
+        check(
+            "audit_protocol_hash",
+            protocol.accepts_artifact_protocol(
+                audit.get("protocol_sha256"), "cohort_audit"
+            ),
+            str(audit.get("protocol_sha256")),
+        )
         check(
             "audit_is_design_only",
             audit.get("design_only") is True

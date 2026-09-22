@@ -1,365 +1,200 @@
-# Experiment execution runbook
+# General audit runbook
 
-This file records which scripts to run, in what order, and why. Run commands
-from the repository root. The commands below use the linked historical inputs
-for smoke testing; they do **not** produce confirmatory paper results.
+This runbook describes how to apply the longitudinal representation audit to a
+user-prepared dataset. It deliberately does not assume access to the authors'
+ADNI snapshot or local directory layout. Run commands from the repository root
+and use paths appropriate to your environment.
 
-## Workflow overview
+The former project-specific runbook is retained locally at
+`.publication-backup/RUNBOOK.pre-publication.md` and is excluded from Git.
 
-| Order | Script | Purpose | Required? |
-|---:|---|---|---|
-| 1 | `python -m pytest` | Verify the environment and core feature/reporting logic. | Always |
-| 2 | `scripts/check_linked_data.sh` | Verify that all local derived-data links resolve. | Local linked workflow |
-| 3 | `qc_neurojepa_inputs.py` | Visually and numerically check preprocessing before extracting embeddings. | Before a new extraction |
-| 4 | `extract_neurojepa_embeddings.py` | Create frozen pooled/token embeddings and their index. | Skip when valid embeddings already exist |
-| 5 | `build_state_transition_pairs.py` | Join embeddings to longitudinal pairs and select forecast horizons. | Future morphometry |
-| 6 | `prepare_paper_replications.py` | Create immutable split-specific inputs, hashes, and provenance. | After protocol freeze |
-| 7 | `train_neurojepa_downstream_probe.py` | Run AD-vs-CN and 36-month MCI-conversion classification. | Paper tasks |
-| 8 | `train_neurojepa_cognitive_probe.py` | Run same-visit and future cognitive Ridge probes. | Paper tasks |
-| 9 | `train_neurojepa_future_state_probe.py` | Run horizon-matched future morphometry probes. | Paper tasks |
-| 10 | `train_neurojepa_survival_probe.py` | Run first-MCI-to-AD Cox survival probes. | Paper task |
-| 11 | `report_paired_results.py` | Compute paired effects, bootstrap CIs, sign p-values, and within-family FDR. | After matched models finish |
+## 1. Freeze the analysis definition
 
-The task-training scripts in steps 6--9 are independent once their inputs are
-ready. Their order follows the manuscript: diagnostic sanity check, concurrent
-cognition, prognosis, conversion, and survival.
+Before inspecting held-out results, copy `configs/protocol.json` and adapt it to
+the new study. Record the cohort source and access date; eligibility and outcome
+definitions; model and checkpoint revisions and hashes; preprocessing and
+morphometry versions; feature groups, metrics, exclusions, model grids; and
+participant-level split seeds. Give a modified protocol a new version rather
+than presenting it as the paper protocol.
 
-## 1. Activate and validate the environment
+## 2. Prepare images and clinical data
 
-```bash
-conda activate neurojepa-adni-audit
-python -m pytest
-bash scripts/check_linked_data.sh
+Build a visit-level manifest without using outcomes to choose scans or to decide
+whether preprocessing succeeded. Each row represents one imaging visit.
+
+Required identifiers:
+
+```text
+participant_id, session_id, image_id, session_month
 ```
 
-Why: this catches missing Python dependencies, broken imports, and unavailable
-linked data before any expensive computation. Do not continue after a failure.
+For Neuro-JEPA extraction, add `processed_t1_path`. For the paper feature groups,
+prepare the applicable columns below:
 
-For the existing linked smoke workflow, define the inputs once:
-
-```bash
-export AUDIT_MANIFEST="data/linked/manifest.csv"
-export AUDIT_EMBEDDING_INDEX="data/linked/embedding_index.csv"
-export AUDIT_PROGRESSION_PAIRS="data/linked/progression_pairs.csv"
+```text
+diagnosis_at_session
+age_at_session, sex_baseline, education_years_baseline, apoe4_status
+mmse_at_session, adas11_at_session, adas13_at_session
+vol_total_intracranial
+vol_hippocampus_total, vol_lateral_ventricles_total
+vol_left_amygdala, vol_right_amygdala
+vol_left_inferior_lateral_ventricle, vol_right_inferior_lateral_ventricle
+vol_left_cerebral_cortex, vol_right_cerebral_cortex
 ```
 
-## 2. QC before a new embedding extraction
+Only columns needed by the selected endpoint are mandatory. Use stable
+pseudonymous identifiers, unique image keys, numeric visit times in months, and
+consistent units. Keep the source-identifier mapping outside the repository.
 
-Skip this and step 3 when `data/linked/embedding_index.csv` and all referenced
-embedding files have already passed validation.
+Recommended upstream MRI preparation is documented scan selection,
+DICOM-to-NIfTI conversion, intensity non-uniformity correction, brain extraction,
+spatial normalization appropriate to the encoder, visual QC, and a documented
+segmentation pipeline for morphometry. Apply one consistent pipeline, record all
+failures and versions, and avoid manual decisions informed by outcomes.
 
-First request access to the gated Neuro-JEPA weights and authenticate as
-described in `README.md`. Then run a small longitudinal sample:
+## 3. Extract or supply frozen embeddings
+
+For Neuro-JEPA, first inspect a representative QC sample:
 
 ```bash
 python scripts/qc_neurojepa_inputs.py \
-  --manifest-path "$AUDIT_MANIFEST" \
-  --output-dir results/smoke/input_qc \
+  --manifest-path /path/to/manifest.csv \
+  --image-path-column processed_t1_path \
+  --output-dir /private/path/input_qc \
   --model-name-or-path NYUMedML/Neuro-JEPA \
   --device cuda
 ```
 
-Why: it checks orientation, spatial preprocessing, intensity statistics, token
-shapes, and within/between-subject embedding similarities before committing to a
-full-cohort GPU run. Inspect the generated images, CSV files, and summary JSON.
-
-Before confirmatory extraction, also pass the frozen model revision with
-`--hf-revision`; do not silently use a moving Hub revision.
-
-## 3. Extract frozen Neuro-JEPA embeddings
-
-Use `--feature-kind both` because pooled vectors support the main linear probes
-and token embeddings support attentive sensitivity analyses. Private outputs are
-kept below the ignored `data/private/` directory.
+Then extract pooled representations using an immutable approved model revision:
 
 ```bash
 python scripts/extract_neurojepa_embeddings.py \
-  --manifest-path "$AUDIT_MANIFEST" \
-  --output-dir data/private/neurojepa_embeddings \
-  --index-path data/private/neurojepa_embedding_index.csv \
-  --summary-path data/private/neurojepa_embedding_summary.json \
+  --manifest-path /path/to/manifest.csv \
+  --image-path-column processed_t1_path \
+  --output-dir /private/path/embeddings \
+  --index-path /private/path/embedding_index.csv \
+  --summary-path /private/path/embedding_summary.json \
   --model-name-or-path NYUMedML/Neuro-JEPA \
-  --feature-kind both \
-  --save-dtype float32 \
-  --device cuda \
-  --resume
+  --hf-revision YOUR_IMMUTABLE_REVISION \
+  --feature-kind pooled --save-dtype float32 --device cuda --resume
 ```
 
-Why: downstream experiments must reuse one frozen representation rather than
-reloading or updating the encoder separately for each endpoint. `--resume`
-avoids recomputing completed scans. After extraction, point later commands at
-the new index:
+For another frozen model, run its preprocessing and inference separately. Save
+one finite, fixed-length one-dimensional `.npy` vector per image and create an
+index with:
+
+```text
+participant_id, session_id, image_id, pooled_embedding_path
+```
+
+Use the same frozen encoder and pooling rule for all visits. Do not use outcome
+labels during representation extraction.
+
+## 4. Validate and freeze the embeddings
+
+Validate exact key agreement, uniqueness, paths, dimensions, finite values, and
+file hashes. The output directory must not already exist.
 
 ```bash
-export AUDIT_EMBEDDING_INDEX="data/private/neurojepa_embedding_index.csv"
+python scripts/build_embedding_integrity_manifest.py \
+  --embedding-index-path /private/path/embedding_index.csv \
+  --source-manifest-path /path/to/manifest.csv \
+  --output-dir /private/path/embedding_integrity \
+  --expected-dimension 768
 ```
 
-## 4. Build horizon-matched transition pairs
+Replace `768` with the dimension of a different model.
+
+## 5. Prepare longitudinal pairs
+
+Create outcome-blind pairs within participants. A follow-up must be strictly
+later than its anchor. Select the nearest visit inside each prespecified horizon
+window and retain the observed interval and horizon error.
+
+If a progression-pair table already exists, attach embeddings and select
+horizon-matched pairs with:
 
 ```bash
 python scripts/build_state_transition_pairs.py \
-  --progression-pairs-path "$AUDIT_PROGRESSION_PAIRS" \
-  --embedding-index-path "$AUDIT_EMBEDDING_INDEX" \
-  --pair-policy horizon_matched \
-  --horizons 12 24 36 \
+  --progression-pairs-path /path/to/progression_pairs.csv \
+  --embedding-index-path /private/path/embedding_index.csv \
+  --pair-policy horizon_matched --horizons 12 24 36 \
   --horizon-tolerance-months 3 \
-  --output-path results/smoke/horizon_matched_pairs.csv \
-  --summary-path results/smoke/horizon_matched_pairs_summary.json
+  --output-path /private/path/horizon_pairs.csv \
+  --summary-path /private/path/horizon_pairs_summary.json
 ```
 
-Why: future anatomy must compare visits near prespecified forecast horizons,
-not mix arbitrary adjacent-visit gaps. Review the summary counts and horizon
-errors before training. For the linked smoke workflow, the already generated
-`data/linked/horizon_matched_pairs.csv` can be used instead.
+Inspect participant and pair counts, temporal ordering, follow-up distribution,
+and missing outcomes before training.
 
-## 5. Run the historical smoke experiments
+## 6. Create participant-level nested folds
 
-These commands test the end-to-end implementation. Write them under
-`results/smoke/`, which is ignored by Git, and never copy their numerical output
-into the paper.
-
-### 5.1 AD-vs-CN diagnostic sanity check
+All visits from one participant must remain together. Learned preprocessing and
+hyperparameter selection belong in inner training folds; outer folds are used
+once for held-out evaluation.
 
 ```bash
-python scripts/train_neurojepa_downstream_probe.py \
-  --manifest-path "$AUDIT_MANIFEST" \
-  --embedding-index-path "$AUDIT_EMBEDDING_INDEX" \
-  --output-dir results/smoke/ad_vs_cn \
-  --task ad_vs_cn \
-  --feature morphometry_only \
-  --feature clinical_demographic \
-  --feature conventional_full \
-  --feature neurojepa_only \
-  --feature neurojepa_morphometry \
-  --feature neurojepa_conventional \
-  --seed 20260623
+python scripts/prepare_nested_cv.py \
+  --protocol-path /path/to/your_protocol.json \
+  --manifest-path /path/to/manifest.csv \
+  --embedding-index-path /private/path/embedding_index.csv \
+  --embedding-integrity-dir /private/path/embedding_integrity \
+  --progression-pairs-path /path/to/progression_pairs.csv \
+  --horizon-pairs-path /private/path/horizon_pairs.csv \
+  --output-dir /private/path/nested_cv_inputs
 ```
 
-Why: this establishes whether diagnostic state is decodable and whether the
-embedding adds value beyond matched conventional inputs. It is a sanity check,
-not the primary endpoint.
+Use `--allow-draft-protocol` and `--allow-dirty-worktree` only for development,
+never for a locked analysis.
 
-### 5.2 Same-visit cognition
+## 7. Audit cohorts, then run models
+
+First generate outcome-blind cohort flows and confirm that each paired comparison
+uses identical participants and observations:
 
 ```bash
-python scripts/train_neurojepa_cognitive_probe.py \
-  --manifest-path "$AUDIT_MANIFEST" \
-  --embedding-index-path "$AUDIT_EMBEDDING_INDEX" \
-  --output-dir results/smoke/same_visit_cognition \
-  --task same_visit \
-  --target adas13 --target adas11 --target mmse \
-  --feature morphometry_only \
-  --feature clinical_demographic \
-  --feature conventional_full \
-  --feature neurojepa_only \
-  --feature neurojepa_morphometry \
-  --feature neurojepa_conventional \
-  --seed 20260623
+python scripts/audit_nested_cohorts.py --help
 ```
 
-Why: same-visit ADAS13 is the planned primary endpoint; ADAS11 and MMSE are
-secondary endpoints. All models use the same participant split and Ridge grid.
-
-### 5.3 Future cognition
+Resolve unexplained key mismatches, duplicates, temporal errors, and
+feature-group cohort differences. Then use the relevant nested entry points:
 
 ```bash
-python scripts/train_neurojepa_cognitive_probe.py \
-  --manifest-path "$AUDIT_MANIFEST" \
-  --embedding-index-path "$AUDIT_EMBEDDING_INDEX" \
-  --output-dir results/smoke/future_cognition \
-  --task future_change \
-  --target adas13 --target adas11 --target mmse \
-  --horizon-months 12 24 36 \
-  --horizon-tolerance-months 3 \
-  --feature conventional_full \
-  --feature neurojepa_conventional \
-  --seed 20260623
+python scripts/run_nested_tabular_probe.py --help
+python scripts/run_nested_survival_probe.py --help
+python scripts/run_nested_nonlinear_probe.py --help
 ```
 
-Why: this tests short-horizon prognostic value against current cognitive state
-and the carry-forward baseline. Twelve months is the main horizon; 24 and 36
-months are sensitivity analyses.
+Run all prespecified feature groups on the same folds. The main incremental
+contrasts are `morphometry_only` versus `neurojepa_morphometry`, and
+`conventional_full` versus `neurojepa_conventional`. For another encoder, the
+`neurojepa_*` labels refer operationally to the supplied embedding; document the
+substitution. Never tune on outer-fold predictions. Outcomes and absent
+embeddings are not imputed.
 
-### 5.4 Future morphometry
+## 8. Produce paired reports
 
-```bash
-python scripts/train_neurojepa_future_state_probe.py \
-  --table-path data/linked/horizon_matched_pairs.csv \
-  --output-dir results/smoke/future_morphometry \
-  --regression-target hippocampus_total_icv \
-  --regression-target lateral_ventricles_total_icv \
-  --feature covariates_morphometry \
-  --feature jepa_only \
-  --feature jepa_covariates_morphometry \
-  --seed 20260623
-```
-
-If step 4 generated a fresh table, replace `--table-path` with
-`results/smoke/horizon_matched_pairs.csv`.
-
-Why: hippocampal and ventricular volume must be normalized by ICV and evaluated
-at matched horizons, including persistence/carry-forward comparators.
-
-### 5.5 MCI conversion within 36 months
-
-```bash
-python scripts/train_neurojepa_downstream_probe.py \
-  --manifest-path "$AUDIT_MANIFEST" \
-  --embedding-index-path "$AUDIT_EMBEDDING_INDEX" \
-  --output-dir results/smoke/mci_conversion_36m \
-  --task mci_conversion_36m \
-  --conversion-window-months 36 \
-  --stable-min-followup-months 36 \
-  --mci-anchor-policy first \
-  --feature conventional_full \
-  --feature neurojepa_conventional \
-  --seed 20260623
-```
-
-Why: this is the fixed-horizon binary prognosis endpoint. Requiring 36 months
-of follow-up prevents short-followed participants from being mislabeled stable.
-
-### 5.6 First-MCI survival
-
-```bash
-python scripts/train_neurojepa_survival_probe.py \
-  --manifest-path "$AUDIT_MANIFEST" \
-  --embedding-index-path "$AUDIT_EMBEDDING_INDEX" \
-  --output-dir results/smoke/first_mci_survival \
-  --mci-anchor-policy first \
-  --model cox_elastic_net \
-  --feature covariates \
-  --feature pooled \
-  --include-covariates \
-  --seed 20260623
-```
-
-Why: survival analysis retains late conversions and right censoring instead of
-reducing follow-up to a binary 36-month label. The first MCI visit is the primary
-anchor; `--mci-anchor-policy all` belongs only in a sensitivity analysis.
-
-## 6. Locked repeated nested CV after protocol freeze
-
-The legacy `prepare_paper_replications.py` command implements a single
-train/validation/test assignment and therefore **must not be used for the final
-paper protocol**. Generate and validate the pooled-embedding inventory first:
-
-```bash
-python scripts/build_embedding_integrity_manifest.py
-```
-
-This command fails closed on duplicate or mismatched keys, absent files, shapes
-other than `(768,)`, non-finite values, and an existing output directory. It
-writes the index/source hashes plus one SHA-256 per pooled `.npy` file.
-
-After protocol freeze and author sign-off, create the three-repeat, four-outer,
-five-inner participant assignments with:
-
-```bash
-python scripts/prepare_nested_cv.py
-```
-
-Each participant is outer-test exactly once per repeat. Within every outer
-development partition, each participant is inner-validation exactly once. The
-generator checks disjointness and binds copies of all inputs to the protocol and
-embedding-integrity hashes. For implementation-only smoke generation before
-freeze, both `--allow-draft-protocol` and `--allow-dirty-worktree` are required.
-
-The tabular classification, cognition, and future-morphometry runner consumes these
-assignments, refits preprocessing independently inside each inner fold, selects
-the locked hyperparameter by mean inner-fold performance, and refits on the
-complete outer-development partition:
-
-```bash
-python scripts/run_nested_tabular_probe.py \
-  --task ad_vs_cn \
-  --feature-group conventional_full \
-  --feature-group neurojepa_conventional
-```
-
-For future cognition, add `--task future_cognition`, the source column through
-`--target`, and the locked horizon through `--horizon-months`. Future morphometry
-uses `--task future_morphometry` with targets such as
-`hippocampus_total_icv`. The first-MCI Cox runner is separate:
-
-```bash
-python scripts/run_nested_survival_probe.py \
-  --feature-group conventional_full \
-  --feature-group neurojepa_conventional
-```
-
-Before any experiment, generate the outcome-blind cohort audit:
-
-```bash
-python scripts/audit_nested_cohorts.py
-```
-
-After every core endpoint has all outer-fold predictions, synthesize paired
-effects, correlated-repeat bootstrap intervals, fold/repeat dispersion, and the
-global BH family with:
+After all held-out predictions are complete, copy and adapt
+`configs/nested_paired_report.example.json`, then run:
 
 ```bash
 python scripts/report_nested_paired_results.py \
-  --spec-path configs/nested_paired_report.example.json \
-  --output-dir results/paper_neurojepa_feature_audit/paired_report
+  --spec-path /path/to/paired_report.json \
+  --output-dir /private/path/paired_report
 ```
 
-The complete resumable matrix contains 20 tabular endpoint/horizon commands plus
-first-MCI survival, each across all six feature groups. Inspect it without
-executing anything:
+Report absolute performance and paired incremental effects, uncertainty,
+calibration, fold/repeat dispersion, cohort counts, exclusions, missingness, and
+multiplicity correction. Repeated splits are correlated resamples, not
+independent external replications.
 
-```bash
-python scripts/run_locked_experiment_matrix.py \
-  --input-dir results/paper_neurojepa_feature_audit/locked_inputs \
-  --output-dir results/paper_neurojepa_feature_audit/experiments
-```
+## 9. Archive provenance privately
 
-Only after every preflight gate passes, add `--execute`. Completed fold outputs
-are verified and skipped on resume; incomplete directories stop the matrix rather
-than being overwritten.
+Privately retain hashes of manifests, embeddings, folds, protocol, code commit,
+environment, commands, logs, and exclusion counts. Publicly release only
+aggregate, disclosure-checked results allowed by the data-use agreement.
 
-The final read-only gate is:
-
-```bash
-python scripts/preflight_locked_run.py \
-  --input-dir results/paper_neurojepa_feature_audit/locked_inputs \
-  --cohort-audit-path results/paper_neurojepa_feature_audit/cohort_audit.json
-```
-
-It must report `"ready": true`; a draft protocol, missing author sign-off, dirty
-or unborn Git revision, stale input hash, invalid embedding inventory, or
-unreconciled cohort flow blocks execution.
-
-Do not launch these commands without development flags until the protocol is
-frozen. During development, restrict smoke runs to one repeat and one outer fold
-and pass `--allow-draft-protocol`.
-
-The locked analysis is authorized by Gabriele Lozupone, but execution remains
-blocked until regenerated frozen inputs and the cohort audit pass preflight.
-
-## 7. Complete preflight before confirmatory paper runs
-
-Protocol version 0.4.0 was frozen and approved on 2026-07-20. Confirmatory runs
-still require all of the following:
-
-1. Verify the end-to-end command matrix from a clean committed worktree.
-2. Commit the frozen `configs/protocol.json` and archive its hash.
-3. Regenerate the design-only cohort/precision audit and all immutable inputs
-   from the frozen protocol and clean commit.
-
-Until those items are complete, `results/smoke/` is implementation evidence
-only. Final numerical claims must come exclusively from the three immutable
-repeated nested-CV runs under `results/paper_neurojepa_feature_audit/`.
-
-## Output checks after every script
-
-Before starting the next stage, check that:
-
-- the command exited successfully and its summary JSON is readable;
-- train, validation, and test all contain participants and required classes or
-  events;
-- no participant appears in more than one split;
-- selected features and source columns match the intended task;
-- prediction row counts match the recorded task table;
-- no ADNI identifiers, images, or participant-level embeddings are staged for
-  Git.
+Never commit images, participant tables, identifiers, embeddings, predictions,
+credentials, or generated outputs. With a new ADNI download, describe the work
+as an application to the cohort assembled on the recorded access date, not as an
+exact reproduction of the paper's numerical results.

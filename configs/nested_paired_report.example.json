@@ -1,4 +1,5 @@
 {
+  "description": "Legacy primary-only example. Locked reporting uses configs/nested_paired_report.json, which also contains the nonlinear family.",
   "comparisons": [
     {"id": "ad_vs_cn_auroc", "family": "global_core_endpoints", "predictions_root": "results/paper_neurojepa_feature_audit/experiments", "task": "ad_vs_cn", "target": "label", "metric": "auroc"},
     {"id": "same_visit_adas13_subject_equal_mae", "family": "global_core_endpoints", "predictions_root": "results/paper_neurojepa_feature_audit/experiments", "task": "same_visit_cognition", "target": "adas13_at_session", "metric": "subject_equal_mae"},

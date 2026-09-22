@@ -1,9 +1,43 @@
 {
-  "protocol_version": "0.4.0",
+  "protocol_version": "0.5.0",
   "status": "frozen",
   "ready_for_author_signoff": true,
-  "frozen_at": "2026-07-20T19:56:18+02:00",
+  "frozen_at": "2026-07-23T10:38:47+02:00",
   "approved_by": ["Gabriele Lozupone"],
+  "parent_protocol": {
+    "version": "0.4.0",
+    "sha256": "cfacf5e7e0d144129b6fb2b00ec93a947ab1ce49e7fdf629d9f22c43a48c1eff",
+    "frozen_at": "2026-07-20T19:56:18+02:00"
+  },
+  "amendments": [
+    {
+      "id": "outcome_blind_nonlinear_decoder_capacity",
+      "approved_at": "2026-07-23T10:38:47+02:00",
+      "classification": "outcome_blind_prespecified_secondary_analysis",
+      "approval_basis": "Approved by the author and collaborating protocol reviewer before human inspection or interpretation of the locked outer-test results.",
+      "rationale": "A regularized linear probe estimates directly accessible information but cannot exclude incremental information requiring a nonlinear decoder. A uniformly applied MLP analysis is therefore locked for every tabular core endpoint before result interpretation.",
+      "changes": [
+        "add a matched MLP comparison for all ten non-survival core endpoints",
+        "retain Ridge, logistic regression, and penalized Cox as the primary low-capacity analyses",
+        "exclude survival because a standard MLP does not model censoring and a neural survival model would constitute a separate model class",
+        "reuse the immutable 0.4.0 cohort audit, nested fold assignments, task tables, embeddings, and completed linear predictions"
+      ]
+    }
+  ],
+  "artifact_compatibility": {
+    "policy": "Immutable artifacts generated under an explicitly listed parent protocol may be reused only when the amendment does not alter their cohort, predictors, targets, embeddings, partitions, or linear estimands.",
+    "accepted_parent_protocols": [
+      {
+        "version": "0.4.0",
+        "sha256": "cfacf5e7e0d144129b6fb2b00ec93a947ab1ce49e7fdf629d9f22c43a48c1eff",
+        "artifacts": [
+          "nested_cv_inputs",
+          "cohort_audit",
+          "linear_experiments"
+        ]
+      }
+    ]
+  },
   "study": {
     "title": "Do Frozen Neuroimaging Foundation Representations Add Diagnostic and Prognostic Value in Alzheimer Disease? A Longitudinal ADNI Audit",
     "design": "retrospective_repeated_nested_cross_validation_incremental_value_audit",
@@ -55,7 +89,7 @@
     "stratification": "baseline diagnosis and any diagnosis change for common outer folds; task outcome or event balance may be used only inside each outer-development partition",
     "same_assignment_for_all_tasks": true,
     "participant_rule": "Within every outer fold, all rows from a participant occur only in outer-development or outer-test. Each participant is outer-test exactly once per repeat.",
-    "test_access": "All folds, grids, endpoints and reporting code are locked before generating any outer-test prediction.",
+    "test_access": "The 0.4.0 primary folds, grids, endpoints and reporting code were locked before primary outer-test generation. The 0.5.0 MLP architecture, grid, complete ten-endpoint matrix and reporting rules were locked outcome-blind before human inspection or interpretation of those results and before any nonlinear outer-test prediction.",
     "model_selection_data": "five-fold participant-level inner cross-validation inside each outer-development partition",
     "final_refit": "After inner-CV hyperparameter selection, refit the complete pipeline on the full 75% outer-development partition and evaluate its 25% outer-test fold once.",
     "split_variability": "Report every outer-fold effect, the pooled out-of-fold effect per repeat, and mean, standard deviation and range across the three repeats. Repeats are correlated resamples, not independent cohorts."
@@ -215,6 +249,73 @@
     "overall_success_rule": "none; report the complete endpoint matrix and make only endpoint-specific and domain-calibrated conclusions",
     "endpoint_claim_rule": "A Neuro-JEPA incremental-value claim for a core endpoint requires a favorable paired effect, a 95% interval excluding zero, and BH q<0.05 in the single global core family."
   },
+  "nonlinear_decoder_analysis": {
+    "status": "locked_prespecified_secondary_analysis",
+    "decoder": "single_hidden_layer_pytorch_mlp",
+    "scientific_question": "Does the frozen Neuro-JEPA representation add information beyond conventional variables when both feature sets are evaluated with the same nonlinear decoder?",
+    "required_feature_groups": [
+      "conventional_full",
+      "neurojepa_conventional"
+    ],
+    "descriptive_feature_groups": [
+      "neurojepa_only"
+    ],
+    "paired_comparison": "mlp_neurojepa_conventional-minus-mlp_conventional_full",
+    "endpoints": [
+      {"id": "mlp_ad_vs_cn_auroc", "base_endpoint_id": "ad_vs_cn_auroc", "task": "ad_vs_cn", "target": "label", "metric": "auroc", "favorable_direction": "positive"},
+      {"id": "mlp_mci_conversion_36m_auprc", "base_endpoint_id": "mci_conversion_36m_auprc", "task": "mci_conversion_36m", "target": "label", "metric": "auprc", "favorable_direction": "positive"},
+      {"id": "mlp_same_visit_adas13_subject_equal_mae", "base_endpoint_id": "same_visit_adas13_subject_equal_mae", "task": "same_visit_cognition", "target": "adas13_at_session", "metric": "subject_equal_mae", "favorable_direction": "negative"},
+      {"id": "mlp_same_visit_adas11_subject_equal_mae", "base_endpoint_id": "same_visit_adas11_subject_equal_mae", "task": "same_visit_cognition", "target": "adas11_at_session", "metric": "subject_equal_mae", "favorable_direction": "negative"},
+      {"id": "mlp_same_visit_mmse_subject_equal_mae", "base_endpoint_id": "same_visit_mmse_subject_equal_mae", "task": "same_visit_cognition", "target": "mmse_at_session", "metric": "subject_equal_mae", "favorable_direction": "negative"},
+      {"id": "mlp_future_12m_adas13_subject_equal_mae", "base_endpoint_id": "future_12m_adas13_subject_equal_mae", "task": "future_cognition", "target": "adas13_at_session_12m", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"id": "mlp_future_12m_adas11_subject_equal_mae", "base_endpoint_id": "future_12m_adas11_subject_equal_mae", "task": "future_cognition", "target": "adas11_at_session_12m", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"id": "mlp_future_12m_mmse_subject_equal_mae", "base_endpoint_id": "future_12m_mmse_subject_equal_mae", "task": "future_cognition", "target": "mmse_at_session_12m", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"id": "mlp_future_12m_hippocampus_total_icv_subject_equal_mae", "base_endpoint_id": "future_12m_hippocampus_total_icv_subject_equal_mae", "task": "future_morphometry", "target": "hippocampus_total_icv_12m", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"},
+      {"id": "mlp_future_12m_lateral_ventricles_total_icv_subject_equal_mae", "base_endpoint_id": "future_12m_lateral_ventricles_total_icv_subject_equal_mae", "task": "future_morphometry", "target": "lateral_ventricles_total_icv_12m", "metric": "subject_equal_future_value_mae", "favorable_direction": "negative"}
+    ],
+    "excluded_endpoints": {
+      "first_mci_survival": "A standard MLP does not accommodate censoring; no neural survival model is introduced.",
+      "24_and_36_month_endpoints": "Longer horizons remain sensitivity endpoints for the primary linear analysis and are excluded to bound multiplicity and computation."
+    },
+    "architecture": {
+      "hidden_layers": [64],
+      "activation": "ReLU",
+      "dropout": 0.2,
+      "output": "one logit for classification or one standardized continuous value for regression"
+    },
+    "optimization": {
+      "optimizer": "AdamW",
+      "learning_rate": 0.001,
+      "weight_decay_grid": [0.001, 0.01],
+      "batch_size": 128,
+      "epochs": 100,
+      "gradient_clip_norm": 5.0,
+      "early_stopping": false,
+      "regression_target_scaling": "weighted training-fold mean and standard deviation, inverted before validation and test metrics",
+      "classification_weighting": "inverse class-frequency weights learned in each fitting partition",
+      "repeated_visit_weighting": "participant-equal loss weights identical in estimand to the primary analysis",
+      "tie_break": "choose the larger weight decay",
+      "initialization": "deterministic seed derived from the locked repeat seed, outer fold, and inner fold",
+      "device": "CUDA when explicitly requested and available, otherwise CPU; record the resolved device and runtime versions"
+    },
+    "selection": {
+      "folds": "the same five participant-level inner folds used by the primary analysis",
+      "metrics": {
+        "ad_vs_cn": "mean_inner_fold_auroc",
+        "mci_conversion_36m": "mean_inner_fold_auprc",
+        "regression": "mean_inner_fold_subject_equal_mae"
+      },
+      "final_refit": "refit on the complete outer-development partition for 100 epochs",
+      "outer_test_access": "one prediction per locked outer-test fold after selection"
+    },
+    "reporting": {
+      "family": "nonlinear_decoder_core_endpoints",
+      "multiplicity": "Benjamini-Hochberg across the ten matched nonlinear incremental comparisons",
+      "all_results_required": true,
+      "discordance_rule": "If the nonlinear comparison is favorable while the corresponding linear comparison is not, report decoder-dependent incremental information rather than absence of information.",
+      "output_root": "results/paper_neurojepa_feature_audit/nonlinear_experiments"
+    }
+  },
   "endpoint_definitions": {
     "future_cognition": "Fit change from the current value and evaluate the reconstructed future value. Carry-forward is the mandatory baseline.",
     "future_morphometry": "Use regional-volume divided by contemporaneous ICV at both anchor and future visit; fit change and evaluate future value. Only 12, 24, and 36 month pairs are eligible.",
@@ -300,6 +401,18 @@
       "future_12m_lateral_ventricles_total_icv_subject_equal_mae",
       "mci_conversion_36m_auprc",
       "first_mci_survival_uno_c_36m"
+    ],
+    "nonlinear_decoder_core_endpoints": [
+      "mlp_ad_vs_cn_auroc",
+      "mlp_mci_conversion_36m_auprc",
+      "mlp_same_visit_adas13_subject_equal_mae",
+      "mlp_same_visit_adas11_subject_equal_mae",
+      "mlp_same_visit_mmse_subject_equal_mae",
+      "mlp_future_12m_adas13_subject_equal_mae",
+      "mlp_future_12m_adas11_subject_equal_mae",
+      "mlp_future_12m_mmse_subject_equal_mae",
+      "mlp_future_12m_hippocampus_total_icv_subject_equal_mae",
+      "mlp_future_12m_lateral_ventricles_total_icv_subject_equal_mae"
     ]
   },
   "multiplicity": {
@@ -307,7 +420,8 @@
     "q": 0.05,
     "core_endpoints": "one global family containing all 11 diagnostic-state and prognostic core comparisons",
     "interpretation": "effect sizes, confidence intervals, q-values and split dispersion are considered together; there is no binary overall study success criterion",
-    "descriptive_analyses": "No core incremental-value claims."
+    "descriptive_analyses": "No core incremental-value claims.",
+    "nonlinear_decoder_family": "The ten nonlinear paired comparisons form a separate prespecified secondary BH family and do not alter the original 11-endpoint primary family."
   },
   "robustness_and_sensitivity": {
     "locked": [
@@ -375,5 +489,5 @@
     "update the runbook and paired reporter for outer folds, repeat synthesis and the global core endpoint family",
     "pass the complete test suite from a clean committed worktree"
   ],
-  "note": "Revised after author direction on 2026-07-20: existing deterministic frozen embeddings are reused, no historical seed is reused, no single endpoint is privileged, field strength is excluded as a predictor, AD-relevant morphometry is expanded, and split stability is evaluated by three locked repeats of nested cross-validation."
+  "note": "Version 0.5.0 locks the outcome-blind nonlinear decoder-capacity analysis approved on 2026-07-23 while preserving the immutable cohort, embeddings, partitions, endpoint definitions, primary linear analyses, and parent-protocol artifacts from version 0.4.0."
 }

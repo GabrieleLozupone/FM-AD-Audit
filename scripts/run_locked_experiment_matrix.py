@@ -101,8 +101,9 @@ def main() -> None:
         require_frozen=args.execute and not args.allow_draft_protocol,
     )
     provenance = json.loads((args.input_dir / "provenance.json").read_text())
-    if provenance.get("protocol", {}).get("sha256") != protocol.sha256:
-        raise ValueError("Experiment inputs were generated from a different protocol hash.")
+    protocol.require_artifact_protocol(
+        provenance.get("protocol", {}).get("sha256"), "nested_cv_inputs"
+    )
     commands = build_commands(
         protocol_path=args.protocol_path,
         input_dir=args.input_dir,

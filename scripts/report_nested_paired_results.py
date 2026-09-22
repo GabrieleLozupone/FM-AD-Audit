@@ -17,14 +17,26 @@ from neurojepa_adni_audit.protocol import load_protocol
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Report paired effects across nested outer folds and repeats.")
-    parser.add_argument("--spec-path", type=Path, required=True)
+    parser.add_argument(
+        "--spec-path",
+        type=Path,
+        default=PROJECT_ROOT / "configs" / "nested_paired_report.json",
+    )
     parser.add_argument("--protocol-path", type=Path, default=PROJECT_ROOT / "configs/protocol.json")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--allow-draft-protocol", action="store_true")
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable the bootstrap progress bar.",
+    )
     args = parser.parse_args()
     protocol = load_protocol(args.protocol_path, require_frozen=not args.allow_draft_protocol)
     effects, _dispersion = run_nested_paired_report(
-        spec_path=args.spec_path, protocol=protocol, output_dir=args.output_dir
+        spec_path=args.spec_path,
+        protocol=protocol,
+        output_dir=args.output_dir,
+        show_progress=not args.no_progress,
     )
     print(f"Wrote {len(effects)} nested paired endpoint effect(s) to {args.output_dir}")
 

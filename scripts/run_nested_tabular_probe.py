@@ -64,19 +64,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _verify_bound_inputs(args: argparse.Namespace, protocol_sha256: str) -> None:
+def _verify_bound_inputs(args: argparse.Namespace, protocol: object) -> None:
     provenance_path = args.input_dir / "provenance.json"
     if not provenance_path.exists():
         raise FileNotFoundError(f"Nested-CV provenance not found: {provenance_path}")
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
-    if provenance.get("protocol", {}).get("sha256") != protocol_sha256:
-        raise ValueError("Nested-CV inputs were generated from a different protocol hash.")
+    protocol.require_artifact_protocol(
+        provenance.get("protocol", {}).get("sha256"), "nested_cv_inputs"
+    )
+
+
+def _load_completed_summary(run_dir: Path) -> dict:
+    summary_path = run_dir / "summary.json"
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Cannot load completed run summary: {summary_path}") from exc
+    if not isinstance(summary, dict):
+        raise ValueError(f"Completed run summary must be a JSON object: {summary_path}")
+    return summary
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     protocol = load_protocol(args.protocol_path, require_frozen=not args.allow_draft_protocol)
-    _verify_bound_inputs(args, protocol.sha256)
+    _verify_bound_inputs(args, protocol)
     assignments_path = args.assignments_path or args.input_dir / "nested_fold_assignments.csv"
     manifest_path = args.manifest_path or args.input_dir / "manifest.csv"
     embedding_index_path = args.embedding_index_path or args.input_dir / "embedding_index.csv"
@@ -179,6 +191,7 @@ def main(argv: list[str] | None = None) -> None:
                         )
                     )
                     if args.resume and complete:
+                        run_summaries.append(_load_completed_summary(run_dir))
                         print(f"SKIP complete output={run_dir}", flush=True)
                         continue
                     raise FileExistsError(f"Refusing to overwrite nested probe output: {run_dir}")
