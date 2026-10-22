@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "neurojepa-adni-audit"
 version = "0.1.0"
-description = "Reproducible longitudinal audit of frozen Neuro-JEPA features on ADNI"
+description = "Reproducible longitudinal audit of frozen vision foundation model features (Neuro-JEPA, DINOv3, BrainIAC) on ADNI"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -28,6 +28,8 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
+# DINOv3 extraction (protocol 0.6.0 records transformers 5.12.1); BrainIAC needs only monai.
+encoders = ["transformers>=5.12,<6"]
 survival-neural-legacy = ["pycox>=0.3,<1", "torchtuples>=0.2,<1"]
 
 [tool.setuptools.packages.find]

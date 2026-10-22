@@ -9,10 +9,14 @@
 !/RUNBOOK.md
 !/pyproject.toml
 
-# Frozen protocol and portable examples
+# Protocols, paired-report specifications and portable examples
 !/configs/
 /configs/*
 !/configs/protocol.json
+!/configs/protocol_multi_encoder.json
+!/configs/protocol_ridge_sensitivity.json
+!/configs/nested_paired_report.json
+!/configs/nested_paired_report_multi_encoder.json
 !/configs/local_paths.example.yaml
 !/configs/paired_report.example.json
 !/configs/nested_paired_report.example.json
@@ -22,17 +26,27 @@
 /scripts/*
 !/scripts/audit_nested_cohorts.py
 !/scripts/build_embedding_integrity_manifest.py
+!/scripts/build_multi_encoder_report_spec.py
 !/scripts/build_state_transition_pairs.py
+!/scripts/compare_cohort_audits.py
+!/scripts/extract_brainiac_embeddings.py
+!/scripts/extract_dinov3_embeddings.py
 !/scripts/extract_neurojepa_embeddings.py
 !/scripts/preflight_locked_run.py
+!/scripts/prepare_encoder_locked_inputs.py
 !/scripts/prepare_nested_cv.py
+!/scripts/qc_background_residue.py
+!/scripts/qc_encoder_inputs.py
 !/scripts/qc_neurojepa_inputs.py
 !/scripts/report_nested_paired_results.py
+!/scripts/run_encoder_matrix.py
 !/scripts/run_locked_experiment_matrix.py
 !/scripts/run_locked_nonlinear_matrix.py
+!/scripts/run_multi_encoder_report.py
 !/scripts/run_nested_nonlinear_probe.py
 !/scripts/run_nested_survival_probe.py
 !/scripts/run_nested_tabular_probe.py
+!/scripts/run_ridge_sensitivity.py
 
 # Installable audit package
 !/src/
