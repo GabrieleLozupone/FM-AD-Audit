@@ -5,9 +5,6 @@ user-prepared dataset. It deliberately does not assume access to the authors'
 ADNI snapshot or local directory layout. Run commands from the repository root
 and use paths appropriate to your environment.
 
-The former project-specific runbook is retained locally at
-`.publication-backup/RUNBOOK.pre-publication.md` and is excluded from Git.
-
 ## 1. Freeze the analysis definition
 
 Before inspecting held-out results, copy `configs/protocol.json` and adapt it to
@@ -198,3 +195,162 @@ Never commit images, participant tables, identifiers, embeddings, predictions,
 credentials, or generated outputs. With a new ADNI download, describe the work
 as an application to the cohort assembled on the recorded access date, not as an
 exact reproduction of the paper's numerical results.
+
+## 10. Reproduce the multi-encoder extension (DINOv3, BrainIAC)
+
+The extension evaluates DINOv3 and BrainIAC on the completed Neuro-JEPA audit
+without changing its cohort, folds, endpoints, predictor groups, grids,
+decoders, or statistics. It is a post hoc comparison under the draft protocol
+`configs/protocol_multi_encoder.json` (0.6.0), so the runners are called with
+`--allow-draft-protocol`. See the README for model pins and known protocol
+wording errors.
+
+The extension scripts use a fixed layout relative to the repository root.
+Before starting, the Neuro-JEPA audit must be complete under
+`results/paper_neurojepa_feature_audit/`:
+
+```text
+locked_inputs/            nested-CV inputs (manifest, pairs, subjects, folds,
+                          embedding_index.csv with source_image_path)
+experiments/              linear and survival runs
+nonlinear_experiments/    MLP runs
+paired_report/nested_paired_effects.csv
+cohort_audit.json
+```
+
+New outputs are written under `results/fm_encoders/`; the Neuro-JEPA results
+are only read. Install the encoder extra and obtain model access first
+(README, Installation). Run the steps one at a time, in order.
+
+1. Outcome-blind input QC on a small sample. The sample CSV needs
+   `participant_id`, `session_id`, `image_id`, and `processed_t1_path`; each
+   sampled participant's next locked session is added automatically.
+
+   ```bash
+   python scripts/qc_encoder_inputs.py --encoder brainiac \
+     --sample-manifest-path /path/to/qc_sample.csv \
+     --checkpoint-path /private/path/BrainIAC.ckpt --gpu 0
+   python scripts/qc_encoder_inputs.py --encoder dinov3 \
+     --sample-manifest-path /path/to/qc_sample.csv --gpu 0
+   python scripts/qc_background_residue.py \
+     --sample-manifest-path /path/to/qc_sample.csv
+   ```
+
+   Inspect `results/fm_encoders/qc/<encoder>_inputs/montage_*.png` and
+   `qc_summary.json`, and `results/fm_encoders/qc/background_residue/`.
+
+2. Extract embeddings for every locked image. Both extractors are resumable,
+   check the pinned checkpoint hash, and must report 10,470/10,470 images for
+   the paper cohort.
+
+   ```bash
+   python scripts/extract_brainiac_embeddings.py \
+     --checkpoint-path /private/path/BrainIAC.ckpt --gpu 0
+   python scripts/extract_dinov3_embeddings.py --gpu 0
+   ```
+
+   Outputs: `results/fm_encoders/{dinov3,brainiac,brainiac_token0}/embedding_index.csv`
+   and `embedding_summary.json`; vectors under `results/fm_encoders/{dinov3,brainiac}/embeddings/`.
+
+3. Validate the embeddings (the output directories must not exist yet):
+
+   ```bash
+   for rep in dinov3 brainiac brainiac_token0; do
+     python scripts/build_embedding_integrity_manifest.py \
+       --embedding-index-path results/fm_encoders/$rep/embedding_index.csv \
+       --source-manifest-path results/paper_neurojepa_feature_audit/locked_inputs/manifest.csv \
+       --output-dir results/fm_encoders/$rep/embedding_integrity \
+       --expected-dimension 768
+   done
+   ```
+
+4. Build each encoder's input directory. Design files are copied byte for byte,
+   only the embedding columns are rewritten, and all 21 locked endpoint tables
+   must load identical rows from both directories.
+
+   ```bash
+   for rep in dinov3 brainiac brainiac_token0; do
+     python scripts/prepare_encoder_locked_inputs.py --representation $rep
+   done
+   ```
+
+5. Audit the cohorts and require them to equal the Neuro-JEPA audit (only the
+   protocol hash may differ):
+
+   ```bash
+   for rep in dinov3 brainiac brainiac_token0; do
+     python scripts/audit_nested_cohorts.py \
+       --protocol-path configs/protocol_multi_encoder.json --allow-draft-protocol \
+       --input-dir results/fm_encoders/$rep/locked_inputs \
+       --output-path results/fm_encoders/$rep/cohort_audit.json
+   done
+   python scripts/compare_cohort_audits.py \
+     results/fm_encoders/{dinov3,brainiac,brainiac_token0}/cohort_audit.json
+   ```
+
+   Expected: `IDENTICAL` for all three.
+
+6. Run the experiment matrices. Without `--execute` the script prints a
+   read-only plan. The encoder-independent conventional groups are reused from
+   the Neuro-JEPA root through read-only symlinks and are never refitted.
+
+   ```bash
+   python scripts/run_encoder_matrix.py --representation all
+   python scripts/run_encoder_matrix.py --representation all --link-baselines
+   python scripts/run_encoder_matrix.py --representation all --linear \
+     --workers 32 --execute
+   python scripts/run_encoder_matrix.py --representation all --mlp \
+     --workers 3 --gpus 0,1,2 --execute
+   python scripts/run_encoder_matrix.py --representation all --status
+   ```
+
+   Expected: 756 linear and survival runs and 240 MLP runs per representation
+   (2,268 and 720 in total), under
+   `results/fm_encoders/<rep>/{experiments,nonlinear_experiments}/`. Runs are
+   resumable; delete any directory reported as `INCOMPLETE` and rerun.
+
+7. Build the paired reports:
+
+   ```bash
+   python scripts/build_multi_encoder_report_spec.py
+   python scripts/run_multi_encoder_report.py
+   ```
+
+   The first command checks every comparison id and family against the
+   protocol, creates the standalone-contrast symlinks under
+   `results/fm_encoders/paired_report_inputs/`, and refuses to overwrite
+   `configs/nested_paired_report_multi_encoder.json` with different content
+   (107 comparisons in 8 families). The second writes
+   `results/fm_encoders/paired_report/nested_paired_effects.csv` (with the
+   33-comparison all-encoder sensitivity q-value), `outer_fold_effects.csv`, and
+   one folder per family. The published Neuro-JEPA effects are read, not
+   recomputed.
+
+## 11. Post hoc ridge regularization sensitivity
+
+This analysis was decided after the primary results and is reported as a post
+hoc sensitivity analysis; the primary results are unchanged. It refits the 8
+regression core endpoints for Neuro-JEPA, DINOv3, and BrainIAC (patch mean)
+with the ridge grid extended from 0.01-1000 to 0.01-1e6, using the unchanged
+runner, inputs, folds, and targets. It requires steps 1-7 above.
+
+```bash
+python scripts/run_ridge_sensitivity.py              # read-only plan: 288 jobs
+python scripts/run_ridge_sensitivity.py --execute --workers 32
+python scripts/run_ridge_sensitivity.py --status
+python scripts/run_ridge_sensitivity.py --report --workers 4
+```
+
+`--execute` first checks that `configs/protocol_ridge_sensitivity.json` is
+exactly the derivation of `configs/protocol_multi_encoder.json`. Outputs under
+`results/fm_encoders/ridge_sensitivity/`:
+
+- `paired_report/nested_paired_effects.csv`: refitted contrasts with
+  `q_full_family` (Benjamini-Hochberg over each original family, reusing the
+  unchanged logistic and Cox p-values) next to the primary estimate, interval,
+  and q-value;
+- `alpha_selection.csv` and `alpha_summary.csv`: selected alpha per run under
+  the original and extended grids;
+- `identity_check.csv`: for every run whose selected alpha did not change,
+  whether the refit reproduces the primary outer-test predictions (the report
+  counts runs that agree within 1e-4).
